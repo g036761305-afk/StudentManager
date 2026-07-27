@@ -25,10 +25,12 @@ os.makedirs(os.path.join(UPLOAD_FOLDER, 'id_photos'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'avatars'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'batch_photos'), exist_ok=True)
 
-try:
-    pdfmetrics.registerFont(TTFont('David', 'C:\\Windows\\Fonts\\david.ttf'))
-    pdfmetrics.registerFont(TTFont('David-Bold', 'C:\\Windows\\Fonts\\davidsb.ttf'))
-except:
+# טעינת גופנים עבריים מתוך תיקיית הפרויקט
+FONT_PATH = os.path.join(os.path.dirname(__file__), 'arial.ttf')
+if os.path.exists(FONT_PATH):
+    pdfmetrics.registerFont(TTFont('David', FONT_PATH))
+    pdfmetrics.registerFont(TTFont('David-Bold', FONT_PATH))
+else:
     try:
         pdfmetrics.registerFont(TTFont('David', 'C:\\Windows\\Fonts\\arial.ttf'))
         pdfmetrics.registerFont(TTFont('David-Bold', 'C:\\Windows\\Fonts\\arialbd.ttf'))
@@ -113,7 +115,6 @@ def init_db():
         )
     ''')
     
-    # שם המשתמש הראשי שונה ל"מנהל ראשי"
     cursor.execute("SELECT * FROM users WHERE username='מנהל ראשי'")
     if not cursor.fetchone():
         default_hash = generate_password_hash("123456")
@@ -204,7 +205,6 @@ def add_user():
         conn.close()
         return jsonify({"error": "שם המשתמש כבר קיים במערכת"}), 400
 
-# נתיב לקבלת רשימת משתמשים
 @app.route('/api/users', methods=['GET'])
 def get_users():
     conn = get_db_connection()
@@ -212,7 +212,6 @@ def get_users():
     conn.close()
     return jsonify([dict(u) for u in users])
 
-# נתיב למחיקת משתמש
 @app.route('/api/delete-user/<int:user_id>', methods=['POST', 'DELETE'])
 def delete_user(user_id):
     current_username = session.get('username')
@@ -584,4 +583,5 @@ def export_excel():
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
