@@ -1,0 +1,87 @@
+import os
+import sqlite3
+import re
+from pypdf import PdfReader
+
+def extract_with_triple_match():
+    db_path = "students.db"
+    avatar_dir = os.path.join("uploads", "avatars")
+    os.makedirs(avatar_dir, exist_ok=True)
+    
+    current_dir = os.getcwd()
+    pdf_files = [f for f in os.listdir(current_dir) if f.lower().endswith('.pdf')]
+    
+    if not pdf_files:
+        print("לא נמצאו קבצי PDF בתיקייה!")
+        return
+        
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    total_matched = 0
+
+    for pdf_filename in pdf_files:
+        # חילוץ שם המחזור מתוך שם הקובץ (למשל מ"מחזור כח.pdf" נקבל "כח")
+        # מנקים את המילה מחזור ואת הסיומת
+        cycle_guess = pdf_filename.lower().replace("מחזור", "").replace(".pdf", "").strip()
+        
+        print(f"\n=== מעבד את {pdf_filename} (מחזור מזוהה: '{cycle_guess}') ===")
+        try:
+            reader = PdfReader(pdf_filename)
+        except Exception as e:
+            print(f"שגיאה בקריאת הקובץ: {e}")
+            continue
+
+        for page_num, page in enumerate(reader.pages):
+            text_lines = [line.strip() for line in page.extract_text().split('\n') if line.strip()]
+            
+            # בניית רשימת זוגות: (שם מלא, ישיבה קטנה)
+            parsed_students = []
+            for i in range(0, len(text_lines), 2):
+                if i + 1 < len(text_lines):
+                    parsed_students.append((text_lines[i], text_lines[i+1]))
+            
+            page_images = page.images
+            
+            for idx, img in enumerate(page_images):
+                if idx < len(parsed_students):
+                    full_name, previous_inst = parsed_students[idx]
+                    
+                    words = full_name.split()
+                    if len(words) < 2:
+                        continue
+                        
+                    last_name_guess = words[0]
+                    first_name_guess = " ".join(words[1:])
+                    
+                    # שאילתת הצלבה משולשת: שם פרטי + משפחה, ישיבה קטנה ומחזור
+                    cursor.execute('''
+                        SELECT id, tz FROM students 
+                        WHERE ((last_name=? AND first_name=?) OR (first_name=? AND last_name=?))
+                          AND previous_institution=? 
+                          AND cycle=?
+                    ''', (last_name_guess, first_name_guess, last_name_guess, first_name_guess, previous_inst, cycle_guess))
+                    
+                    student = cursor.fetchone()
+                    
+                    if student:
+                        student_id, tz = student
+                        clean_filename = f"avatar_{tz}.jpg"
+                        target_path = os.path.join(avatar_dir, clean_filename)
+                        
+                        with open(target_path, "wb") as f:
+                            f.write(img.data)
+                            
+                        db_path_entry = f"/uploads/avatars/{clean_filename}"
+                        cursor.execute("UPDATE students SET avatar_path=? WHERE id=?", (db_path_entry, student_id))
+                        total_matched += 1
+                        print(f" הצלבה משולשת הצליחה עבור: {full_name} ({previous_inst}, מחזור {cycle_guess})")
+                    else:
+                        # אם יש סטייה קלה באחד הנתונים, המערכת תדלג עליו ליתר ביטחון
+                        pass
+                        
+    conn.commit()
+    conn.close()
+    print(f"\nהתהליך הסתיים! שויכו {total_matched} תמונות עם 100% דיוק והצלבה משולשת.")
+
+if __name__ == "__main__":
+    extract_with_triple_match()

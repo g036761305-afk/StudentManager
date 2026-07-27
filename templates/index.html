@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מערכת לניהול תלמידים</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card { border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .table-container { background: white; padding: 20px; border-radius: 12px; }
+        .nav-tabs .nav-link { color: #495057; font-weight: 500; }
+        .avatar-preview { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd; }
+        .advanced-filters { display: none; }
+        .counter-badge { font-size: 0.95rem; font-weight: 600; padding: 6px 12px; border-radius: 20px; }
+        
+        .filter-label {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: block;
+            max-width: 100%;
+        }
+        
+        .clickable-row {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .sortable-header {
+            cursor: pointer;
+            position: relative;
+            white-space: nowrap;
+        }
+        .sortable-header:hover {
+            background-color: #e9ecef;
+        }
+        .sort-icon {
+            font-size: 0.8rem;
+            margin-right: 5px;
+            color: #ccc;
+        }
+        .sortable-header.asc .sort-icon {
+            color: #0d6efd;
+        }
+        .sortable-header.desc .sort-icon {
+            color: #0d6efd;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid my-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 bg-white p-3 rounded-3 shadow-sm">
+        <h2 class="m-0 text-primary fw-bold">ניהול תלמידים</h2>
+        <div>
+            <button class="btn btn-outline-secondary me-2" data-bs-toggle="modal" data-bs-target="#userMgmtModal" onclick="loadUsersList()">🔑 אבטחה ומשתמשים</button>
+            <button class="btn btn-outline-primary me-2" data-bs-toggle="modal" data-bs-target="#settingsModal" onclick="loadTemplatesSettings()">⚙️ ניהול תבניות אישורים</button>
+            <button class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#importModal">📥 ייבוא קבוצה מאקסל</button>
+            <button class="btn btn-success me-2" onclick="exportToExcel()"> לייצא לאקסל</button>
+            <button class="btn btn-primary me-2" onclick="openNewStudentModal()">+ תלמיד חדש</button>
+            <a href="/logout" class="btn btn-outline-danger">🚪 יציאה</a>
+        </div>
+    </div>
+
+    <!-- תיבת סינון ראשי -->
+    <div class="card p-3 mb-4">
+        <div class="row g-3 mb-2">
+            <div class="col-md-3">
+                <label class="form-label fw-semibold filter-label">חיפוש חופשי רגיל</label>
+                <input type="text" id="searchInput" class="form-control" placeholder="לפי שם, ת''ז, עיר או טלפון..." onkeyup="filterStudents()">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-semibold filter-label">סטטוס</label>
+                <select id="statusFilter" class="form-select" onchange="filterStudents()">
+                    <option value="">כל הסטטוסים</option>
+                    <option value="רווק">רווק</option>
+                    <option value="נשוי">נשוי</option>
+                    <option value="מ/יתום">מ/יתום</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-semibold filter-label" title="מחזור (תלמידים ללא שיוך מחזור הקלד 'ריק')">מחזור (ללא שיוך הקלד "ריק")</label>
+                <input type="text" id="cycleFilter" class="form-control" placeholder="לפי מחזור..." onkeyup="filterStudents()" autocomplete="off">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-semibold filter-label">עיר</label>
+                <select id="cityFilter" class="form-select" onchange="filterStudents()">
+                    <option value="">כל הערים</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-outline-secondary w-100" type="button" onclick="toggleAdvancedFilters()">
+                    ⚙️ סינונים נוספים
+                </button>
+            </div>
+        </div>
+
+        <!-- פאנל מתקדם מורחב -->
+        <div class="row g-3 mt-2 advanced-filters" id="advancedFiltersSection">
+            <div class="col-md-4">
+                <label class="form-label fw-semibold text-success">🔍 חיפוש חכם חופשי (AI)</label>
+                <input type="text" id="aiSearchInput" class="form-control border-success" placeholder='נסה: "פעילים", "עזבו", "נשוי", "היו בחיזוק", "סניף ירושלים"...' onkeyup="filterStudents()">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-semibold text-secondary">חוסרי מסמכים</label>
+                <select id="missingDocsFilter" class="form-select" onchange="filterStudents()">
+                    <option value="">הצג את כולם</option>
+                    <option value="no_id_photo">ללא צילום ת"ז</option>
+                    <option value="no_avatar">ללא תמונת פנים</option>
+                    <option value="has_id_photo">עם צילום ת"ז</option>
+                    <option value="has_avatar">עם תמונת פנים</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-semibold text-secondary">סוג זיהוי</label>
+                <select id="docFilter" class="form-select" onchange="filterStudents()">
+                    <option value="">כל סוגי הזיהוי</option>
+                    <option value="id">תעודת זהות</option>
+                    <option value="passport">דרכון</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-semibold text-secondary">שם מוסד קודם</label>
+                <input type="text" id="previousInstFilter" class="form-control" placeholder="לפי מוסד קודם..." onkeyup="filterStudents()">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-semibold text-secondary">שכונה</label>
+                <input type="text" id="neighborhoodFilter" class="form-control" placeholder="לפי שכונה..." onkeyup="filterStudents()">
+            </div>
+        </div>
+    </div>
+
+    <!-- הגדרות תצוגת עמודות ובחירה דינמית -->
+    <div class="card p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-center" style="cursor:pointer;" onclick="document.getElementById('columnSelectorCollapse').classList.toggle('d-none')">
+            <span class="fw-bold text-secondary">👁️ בחירת עמודות להצגה במסך הראשי</span>
+            <span class="text-muted small">לחץ לפתיחה / סגירה</span>
+        </div>
+        <div id="columnSelectorCollapse" class="row g-2 mt-2 d-none">
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-avatar" checked> תמונה</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-id" checked> מזהה</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-last_name" checked> שם משפחה</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-first_name" checked> שם פרטי</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-tz" checked> זיהוי</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-city" checked> עיר</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-phone" checked> טלפון</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-additional_phone"> מספר נוסף</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-cycle" checked> מחזור</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-status" checked> סטטוס</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-previous_institution"> מוסד קודם</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-address"> כתובת</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-neighborhood"> שכונה</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-father_name"> שם האב</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-mother_name"> שם האם</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-birth_gregorian"> ת. לידה לועזי</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-birth_hebrew"> ת. לידה עברי</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-entry_date"> ת. כניסה</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-leave_date"> ת. עזיבה</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-wedding_date"> ת. חתונה</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-voicemail"> תא קולי</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-telephony"> קוד טלפוניה</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-strengthening"> חיזוק</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-id_doc" checked> מסמך ת"ז</label></div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+        <div><span class="badge bg-primary counter-badge shadow-sm" id="studentCounterText">טוען נתונים...</span></div>
+        <div class="text-muted small">סה"כ רשומות במאגר: <span id="totalStudentsCount">0</span></div>
+    </div>
+
+    <div class="table-container shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle" id="studentsTable">
+                <thead class="table-light">
+                    <tr>
+                        <th class="col-avatar">תמונה</th>
+                        <th class="col-id sortable-header" onclick="sortTable('id', this)">מזהה <span class="sort-icon">↕</span></th>
+                        <th class="col-last_name sortable-header" onclick="sortTable('last_name', this)">שם משפחה <span class="sort-icon">↕</span></th>
+                        <th class="col-first_name sortable-header" onclick="sortTable('first_name', this)">שם פרטי <span class="sort-icon">↕</span></th>
+                        <th class="col-tz sortable-header" onclick="sortTable('tz', this)">זיהוי <span class="sort-icon">↕</span></th>
+                        <th class="col-city sortable-header" onclick="sortTable('city', this)">עיר <span class="sort-icon">↕</span></th>
+                        <th class="col-phone sortable-header" onclick="sortTable('phone', this)">טלפון <span class="sort-icon">↕</span></th>
+                        <th class="col-additional_phone sortable-header" onclick="sortTable('additional_phone', this)">מספר נוסף <span class="sort-icon">↕</span></th>
+                        <th class="col-cycle sortable-header" onclick="sortTable('cycle', this)">מחזור <span class="sort-icon">↕</span></th>
+                        <th class="col-status sortable-header" onclick="sortTable('status', this)">סטטוס <span class="sort-icon">↕</span></th>
+                        <th class="col-previous_institution sortable-header" onclick="sortTable('previous_institution', this)">מוסד קודם <span class="sort-icon">↕</span></th>
+                        <th class="col-address sortable-header" onclick="sortTable('address', this)">כתובת <span class="sort-icon">↕</span></th>
+                        <th class="col-neighborhood sortable-header" onclick="sortTable('neighborhood', this)">שכונה <span class="sort-icon">↕</span></th>
+                        <th class="col-father_name sortable-header" onclick="sortTable('father_name', this)">שם האב <span class="sort-icon">↕</span></th>
+                        <th class="col-mother_name sortable-header" onclick="sortTable('mother_name', this)">שם האם <span class="sort-icon">↕</span></th>
+                        <th class="col-birth_gregorian sortable-header" onclick="sortTable('birth_date_gregorian', this)">ת. לידה לועזי <span class="sort-icon">↕</span></th>
+                        <th class="col-birth_hebrew sortable-header" onclick="sortTable('birth_date_hebrew', this)">ת. לידה עברי <span class="sort-icon">↕</span></th>
+                        <th class="col-entry_date sortable-header" onclick="sortTable('entry_date', this)">ת. כניסה <span class="sort-icon">↕</span></th>
+                        <th class="col-leave_date sortable-header" onclick="sortTable('leave_date', this)">ת. עזיבה <span class="sort-icon">↕</span></th>
+                        <th class="col-wedding_date sortable-header" onclick="sortTable('wedding_date', this)">ת. חתונה <span class="sort-icon">↕</span></th>
+                        <th class="col-voicemail sortable-header" onclick="sortTable('voicemail', this)">תא קולי <span class="sort-icon">↕</span></th>
+                        <th class="col-telephony sortable-header" onclick="sortTable('telephony_code', this)">קוד טלפוניה <span class="sort-icon">↕</span></th>
+                        <th class="col-strengthening sortable-header" onclick="sortTable('strengthening', this)">חיזוק <span class="sort-icon">↕</span></th>
+                        <th class="col-id_doc sortable-header" onclick="sortTable('id_photo_exists', this)">מסמך ת"ז <span class="sort-icon">↕</span></th>
+                        <th>פעולות</th>
+                    </tr>
+                </thead>
+                <tbody id="studentsTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- מודאל כרטיס תלמיד עם מניעת מילוי אוטומטי -->
+<div class="modal fade" id="studentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header d-flex justify-content-between align-items-center w-100">
+                <div class="d-flex align-items-center">
+                    <h5 class="modal-title me-3">פרטי תלמיד</h5>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-outline-primary" onclick="navigateStudent(-1)" title="תלמיד קודם (חץ ימינה)">▶ קודם</button>
+                        <button type="button" class="btn btn-outline-primary" onclick="navigateStudent(1)" title="תלמיד הבא (חץ שמאלה)">הבא ◀</button>
+                    </div>
+                    <span class="ms-3 text-success small d-none" id="auto_save_loader">🔄 נשמר אוטומטית...</span>
+                </div>
+                <button type="button" class="btn-close ms-0" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="studentForm" enctype="multipart/form-data" autocomplete="off">
+                    <input type="hidden" id="student_id" name="id">
+                    <input type="hidden" id="id_photo_path_val" name="id_photo_path">
+                    <input type="hidden" id="avatar_path_val" name="avatar_path">
+
+                    <div class="d-flex align-items-center mb-4 p-3 bg-light rounded" style="position: relative;">
+                        <div class="me-3 text-center">
+                            <img src="https://via.placeholder.com/100?text=אין+תמונה" id="avatar_preview_img" class="avatar-preview mb-2" title="ניתן להדביק כאן תמונה ישירות עם Ctrl+V"><br>
+                            <label class="btn btn-sm btn-outline-secondary btn-sm mb-1">
+                                העלה תמונה
+                                <input type="file" id="avatar" name="avatar" accept="image/*" class="d-none" onchange="handleFileChange(this, 'avatar')">
+                            </label>
+                            <div id="avatar_actions_container" class="d-flex justify-content-center gap-1 mt-1 d-none">
+                                <a href="#" id="download_avatar_btn" download class="btn btn-xs btn-outline-success p-1 py-0 small" style="font-size: 11px;">📥 הורד</a>
+                                <button type="button" class="btn btn-xs btn-outline-danger p-1 py-0 small" style="font-size: 11px;" onclick="removeCurrentAvatar()">❌ הסר</button>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 id="header_student_name" class="m-0 text-dark">תלמיד חדש</h4>
+                            <p class="text-muted m-0" id="header_student_tz"></p>
+                        </div>
+                    </div>
+
+                    <ul class="nav nav-tabs mb-3" id="studentTabs">
+                        <li class="nav-item"><button class="nav-link active" id="personal-tab" data-bs-toggle="tab" data-bs-target="#personal" type="button">אישי וקשר</button></li>
+                        <li class="nav-item"><button class="nav-link" id="family-tab" data-bs-toggle="tab" data-bs-target="#family" type="button">רקע ומשפחה</button></li>
+                        <li class="nav-item"><button class="nav-link" id="tech-tab" data-bs-toggle="tab" data-bs-target="#tech" type="button">ניהול ומסמכים</button></li>
+                    </ul>
+
+                    <div class="tab-content" id="studentTabsContent">
+                        <div class="tab-pane fade show active" id="personal">
+                            <div class="row g-3">
+                                <div class="col-md-6"><label class="form-label">שם משפחה</label><input type="text" class="form-control" id="last_name" name="last_name" required></div>
+                                <div class="col-md-6"><label class="form-label">שם פרטי</label><input type="text" class="form-control" id="first_name" name="first_name" required></div>
+                                <div class="col-md-4">
+                                    <label class="form-label">סוג זיהוי</label>
+                                    <select class="form-select" id="is_passport" name="is_passport" onchange="toggleIdentificationFields()">
+                                        <option value="0">תעודת זהות</option>
+                                        <option value="1">דרכון</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" id="ident_label">תעודת זהות</label>
+                                    <input type="text" class="form-control" id="tz" name="tz" oninput="validateIdentification()" autocomplete="off">
+                                    <div class="invalid-feedback" id="ident_feedback">זיהוי לא תקין</div>
+                                </div>
+                                <div class="col-md-4 passport-only d-none"><label class="form-label">ארץ הדרכון</label><input type="text" class="form-control" id="passport_country" name="passport_country"></div>
+                                <div class="col-md-4 passport-only d-none"><label class="form-label">תוקף דרכון</label><input type="date" class="form-control" id="passport_expiry" name="passport_expiry"></div>
+                                <div class="col-md-4"><label class="form-label">סטטוס</label><input type="text" class="form-control" id="status" name="status"></div>
+                                <div class="col-md-6"><label class="form-label">תאריך לידה לועזי</label><input type="date" class="form-control" id="birth_date_gregorian" name="birth_date_gregorian" onchange="autoConvertHebrewDate()"></div>
+                                <div class="col-md-6"><label class="form-label">תאריך לידה עברי</label><input type="text" class="form-control" id="birth_date_hebrew" name="birth_date_hebrew"></div>
+                                <div class="col-md-4"><label class="form-label">עיר</label><input type="text" class="form-control" id="city" name="city"></div>
+                                <div class="col-md-4"><label class="form-label">שכונה</label><input type="text" class="form-control" id="neighborhood" name="neighborhood"></div>
+                                <div class="col-md-4"><label class="form-label">כתובת</label><input type="text" class="form-control" id="address" name="address"></div>
+                                <div class="col-md-6"><label class="form-label">טלפון</label><input type="text" class="form-control" id="phone" name="phone" autocomplete="off"></div>
+                                <div class="col-md-6"><label class="form-label">מספר נוסף</label><input type="text" class="form-control" id="additional_phone" name="additional_phone" autocomplete="off"></div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="family">
+                            <div class="row g-3">
+                                <div class="col-md-4"><label class="form-label">שם האב</label><input type="text" class="form-control" id="father_name" name="father_name"></div>
+                                <div class="col-md-4"><label class="form-label">שם האם</label><input type="text" class="form-control" id="mother_name" name="mother_name"></div>
+                                <div class="col-md-4"><label class="form-label">שם נעורים (לבית)</label><input type="text" class="form-control" id="mother_maiden_name" name="mother_maiden_name"></div>
+                                <div class="col-md-6"><label class="form-label">מוסד קודם</label><input type="text" class="form-control" id="previous_institution" name="previous_institution"></div>
+                                <!-- הגנה מורחבת על שדה מחזור מפני מילוי אוטומטי של כרום -->
+                                <div class="col-md-6">
+                                    <label class="form-label">מחזור</label>
+                                    <input type="text" class="form-control" id="cycle" name="cycle" autocomplete="new-password">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="tech">
+                            <div class="row g-3">
+                                <div class="col-md-4"><label class="form-label">תא קולי</label><input type="text" class="form-control" id="voicemail" name="voicemail"></div>
+                                <div class="col-md-4"><label class="form-label">קוד טלפוניה</label><input type="text" class="form-control" id="telephony_code" name="telephony_code"></div>
+                                
+                                <div class="col-md-4">
+                                    <label class="form-label">חיזוק</label>
+                                    <input type="text" class="form-control" id="strengthening" name="strengthening" placeholder="הקלד פרטי חיזוק...">
+                                </div>
+                                
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold text-secondary">סניף ירושלים</label>
+                                    <select class="form-select" id="is_jerusalem_branch" name="is_jerusalem_branch">
+                                        <option value="0">לא</option>
+                                        <option value="1">כן</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-md-4"><label class="form-label">תאריך כניסה</label><input type="date" class="form-control" id="entry_date" name="entry_date"></div>
+                                <div class="col-md-4"><label class="form-label">תאריך עזיבה</label><input type="date" class="form-control" id="leave_date" name="leave_date"></div>
+                                <div class="col-md-4">
+                                    <label class="form-label text-primary fw-semibold">תאריך חתונה</label>
+                                    <input type="date" class="form-control border-primary" id="wedding_date" name="wedding_date">
+                                </div>
+                                
+                                <div class="col-md-12 p-3 bg-light border rounded">
+                                    <label class="form-label fw-bold text-primary">📄 הנפקת אישורי תלמיד רשמיים (PDF)</label>
+                                    <div id="pdfApprovalsContainer" class="d-flex flex-wrap gap-2 mt-1"></div>
+                                </div>
+                                <div class="col-md-12 mt-2">
+                                    <label class="form-label fw-bold">מסמך צילום תעודת זהות / דרכון</label>
+                                    <div class="input-group">
+                                        <input type="file" class="form-control" id="id_photo" name="id_photo" onchange="handleFileChange(this, 'id_photo')" ondrop="setTimeout(() => handleFileChange(this, 'id_photo'), 100)">
+                                        <span class="input-group-text" id="id_photo_status_badge">לא הועלה קובץ</span>
+                                        <button type="button" class="btn btn-outline-danger d-none" id="delete_id_photo_btn" onclick="removeCurrentIdPhoto()">❌ הסר קובץ</button>
+                                    </div>
+                                    <div id="view_file_link_container" class="mt-2 d-none">
+                                        <a href="#" id="view_file_link" target="_blank" class="btn btn-sm btn-outline-info">צפה בקובץ הקיים במערכת</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer d-flex justify-content-between">
+                <button type="button" class="btn btn-danger" id="deleteBtn" onclick="deleteCurrentStudent()">מחק תלמיד</button>
+                <div>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+                    <button type="button" class="btn btn-primary" id="saveBtn" onclick="saveStudent()">שמור שינויים</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- מודאל ניהול משתמשים ושינוי סיסמה המורחב -->
+<div class="modal fade" id="userMgmtModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">🔑 ניהול אבטחה ומשתמשים</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" id="userTabs">
+                    <li class="nav-item">
+                        <button class="nav-link active" id="users-list-tab" data-bs-toggle="tab" data-bs-target="#usersListSection" type="button" onclick="loadUsersList()">רשימת משתמשים</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="add-user-tab" data-bs-toggle="tab" data-bs-target="#addUserSection" type="button">הוספת משתמש</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="change-pass-tab" data-bs-toggle="tab" data-bs-target="#changePassSection" type="button">שינוי סיסמה</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <!-- רשימת משתמשים וניהולם -->
+                    <div class="tab-pane fade show active" id="usersListSection">
+                        <div class="table-responsive">
+                            <table class="table table-bordered align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>שם משתמש</th>
+                                        <th style="width: 80px;">פעולה</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTableBody">
+                                    <tr><td colspan="2" class="text-center">טוען...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- הוספת משתמש -->
+                    <div class="tab-pane fade" id="addUserSection">
+                        <div class="mb-3">
+                            <label class="form-label">שם משתמש חדש</label>
+                            <input type="text" id="new_user_name_input" class="form-control" autocomplete="off">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">סיסמה</label>
+                            <input type="password" id="new_user_pass_input" class="form-control" autocomplete="new-password">
+                        </div>
+                        <button class="btn btn-success w-100" onclick="submitAddUser()">צור משתמש חדש</button>
+                    </div>
+
+                    <!-- שינוי סיסמה -->
+                    <div class="tab-pane fade" id="changePassSection">
+                        <div class="mb-3">
+                            <label class="form-label">סיסמה נוכחית</label>
+                            <input type="password" id="old_password_input" class="form-control">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">סיסמה חדשה</label>
+                            <input type="password" id="new_password_input" class="form-control">
+                        </div>
+                        <button class="btn btn-primary w-100" onclick="submitChangePassword()">עדכן סיסמה</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- מודאלים מוסתרים -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">ייבוא קבוצת תלמידים</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-4 p-3 bg-light rounded border text-center"><a href="/api/download-template" class="btn btn-sm btn-outline-secondary fw-bold">📥 הורד קובץ אקסל לדוגמה</a></div>
+                <form id="importForm"><input type="file" id="excel_file" class="form-control" accept=".xlsx, .xls" required></form>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-primary" onclick="submitImport()">החל ייבוא למערכת</button></div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">⚙️ עריכת תבניות אישורים</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <select id="templateSelector" class="form-select mb-3" onchange="onTemplateSelectChange()"></select>
+                <textarea id="templateContentTextarea" class="form-control" rows="6"></textarea>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-primary" onclick="saveTemplateText()">שמור תבנית</button></div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">📤 ייצוא לאקסל</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">מוצגים <strong id="filteredCountText">0</strong> תלמידים מתוך <strong id="totalCountText">0</strong>. בחר שיטה:</div>
+            <div class="modal-footer d-flex justify-content-between">
+                <button type="button" class="btn btn-success" onclick="confirmExport(true)">📂 ייצוא מסוננים (<span id="filteredBtnText">0</span>)</button>
+                <button type="button" class="btn btn-primary" onclick="confirmExport(false)">🌐 לייצא את כל המאגר</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let allStudents = [];
+    let filteredStudents = [];
+    let docTemplates = [];
+    let studentModal;
+    let exportModal;
+    let currentSortColumn = '';
+    let currentSortDirection = 'asc'; 
+    let currentlyOpenStudentId = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+        studentModal = new bootstrap.Modal(document.getElementById('studentModal'));
+        exportModal = new bootstrap.Modal(document.getElementById('exportModal'));
+        document.querySelectorAll('.col-toggle').forEach(cb => cb.addEventListener('change', updateColumnsVisibility));
+        
+        document.addEventListener('keydown', (e) => {
+            const modalEl = document.getElementById('studentModal');
+            if (modalEl.classList.contains('show')) {
+                if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT') {
+                    return; 
+                }
+                if (e.key === 'ArrowRight') {
+                    navigateStudent(-1);
+                } else if (e.key === 'ArrowLeft') {
+                    navigateStudent(1);
+                }
+            }
+        });
+
+        document.addEventListener('paste', async (e) => {
+            const modalEl = document.getElementById('studentModal');
+            if (modalEl.classList.contains('show') && currentlyOpenStudentId) {
+                if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                for (let item of items) {
+                    if (item.type.indexOf('image') === 0) {
+                        const blob = item.getAsFile();
+                        const file = new File([blob], "pasted_avatar.png", { type: "image/png" });
+                        
+                        const reader = new FileReader();
+                        reader.onload = event => document.getElementById('avatar_preview_img').src = event.target.result;
+                        reader.readAsDataURL(blob);
+
+                        await triggerSilentAutoSave('avatar', file);
+                        break;
+                    }
+                }
+            }
+        });
+
+        loadStudents();
+        loadDocTemplates();
+    });
+
+    // טעינת רשימת המשתמשים בטבלה
+    async function loadUsersList() {
+        const res = await fetch('/api/users');
+        const users = await res.json();
+        const tbody = document.getElementById('usersTableBody');
+        tbody.innerHTML = '';
+        
+        if (users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" class="text-center">אין משתמשים להצגה</td></tr>';
+            return;
+        }
+
+        users.forEach(u => {
+            tbody.insertAdjacentHTML('beforeend', `
+                <tr>
+                    <td class="fw-bold text-secondary">${u.username}</td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteUser(${u.id}, '${u.username}')">מחק</button>
+                    </td>
+                </tr>
+            `);
+        });
+    }
+
+    // מחיקת משתמש
+    async function deleteUser(userId, username) {
+        if (!confirm(`האם אתה בטוח שברצונך למחוק את המשתמש "${username}"?`)) return;
+
+        const res = await fetch(`/api/delete-user/${userId}`, { method: 'DELETE' });
+        const data = await res.json();
+
+        if (res.ok) {
+            alert(data.message);
+            loadUsersList();
+        } else {
+            alert(data.error || "אירעה שגיאה בעת מחיקת המשתמש");
+        }
+    }
+
+    async function submitChangePassword() {
+        const old_password = document.getElementById('old_password_input').value;
+        const new_password = document.getElementById('new_password_input').value;
+        
+        if (!old_password || !new_password) {
+            alert("יש למלא את כל השדות");
+            return;
+        }
+
+        const res = await fetch('/api/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ old_password, new_password })
+        });
+        
+        const data = await res.json();
+        if (res.ok) {
+            alert(data.message);
+            document.getElementById('old_password_input').value = '';
+            document.getElementById('new_password_input').value = '';
+            bootstrap.Modal.getInstance(document.getElementById('userMgmtModal')).hide();
+        } else {
+            alert(data.error || "אירעה שגיאה");
+        }
+    }
+
+    async function submitAddUser() {
+        const username = document.getElementById('new_user_name_input').value;
+        const password = document.getElementById('new_user_pass_input').value;
+
+        if (!username || !password) {
+            alert("יש למלא שם משתמש וסיסמה");
+            return;
+        }
+
+        const res = await fetch('/api/add-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+            alert(data.message);
+            document.getElementById('new_user_name_input').value = '';
+            document.getElementById('new_user_pass_input').value = '';
+            loadUsersList();
+            bootstrap.Modal.getInstance(document.getElementById('userMgmtModal')).hide();
+        } else {
+            alert(data.error || "אירעה שגיאה");
+        }
+    }
+
+    async function removeCurrentAvatar() {
+        if (!currentlyOpenStudentId) return;
+        if (confirm("האם אתה בטוח שברצונך להסיר את תמונת הפנים של התלמיד?")) {
+            const response = await fetch(`/api/students/${currentlyOpenStudentId}/delete-avatar`, { method: 'POST' });
+            if (response.ok) {
+                document.getElementById('avatar_preview_img').src = "https://via.placeholder.com/100?text=אין+תמונה";
+                document.getElementById('avatar_path_val').value = '';
+                document.getElementById('avatar').value = '';
+                document.getElementById('avatar_actions_container').classList.add('d-none');
+                
+                const res = await fetch('/api/students');
+                allStudents = await res.json();
+                filterStudents();
+            }
+        }
+    }
+
+    async function triggerSilentAutoSave(fieldName, fileObject) {
+        if (!currentlyOpenStudentId) return;
+        
+        const loader = document.getElementById('auto_save_loader');
+        if (loader) loader.classList.remove('d-none');
+
+        const formData = new FormData(document.getElementById('studentForm'));
+        if (fieldName && fileObject) {
+            formData.set(fieldName, fileObject);
+        }
+
+        const phoneInput = document.getElementById('phone');
+        if (phoneInput && phoneInput.value.trim() !== "" && !phoneInput.value.trim().startsWith('0')) {
+            phoneInput.value = "0" + phoneInput.value.trim();
+            formData.set('phone', phoneInput.value);
+        }
+
+        try {
+            await fetch('/api/students/save', { method: 'POST', body: formData });
+            
+            const response = await fetch('/api/students');
+            allStudents = await response.json();
+            document.getElementById('totalStudentsCount').innerText = allStudents.length;
+            filterStudents();
+            
+            const updatedStudent = allStudents.find(student => student.id === currentlyOpenStudentId);
+            if (updatedStudent) {
+                if (updatedStudent.avatar_path) {
+                    document.getElementById('avatar_preview_img').src = updatedStudent.avatar_path;
+                    document.getElementById('avatar_actions_container').classList.remove('d-none');
+                    document.getElementById('download_avatar_btn').href = updatedStudent.avatar_path;
+                }
+                
+                const statusBadge = document.getElementById('id_photo_status_badge');
+                const deleteIdPhotoBtn = document.getElementById('delete_id_photo_btn');
+                if (updatedStudent.id_photo_path || updatedStudent.id_photo_exists === 1) {
+                    statusBadge.innerText = "הועלה בהצלחה V"; 
+                    statusBadge.className = "input-group-text bg-success text-white";
+                    document.getElementById('view_file_link_container').classList.remove('d-none');
+                    document.getElementById('view_file_link').href = updatedStudent.id_photo_path;
+                    if (deleteIdPhotoBtn) deleteIdPhotoBtn.classList.remove('d-none');
+                }
+            }
+        } catch (err) {
+            console.error("Auto save failed:", err);
+        } finally {
+            if (loader) loader.classList.add('d-none');
+        }
+    }
+
+    async function handleFileChange(input, fieldName) {
+        if (input.files && input.files[0]) {
+            if (fieldName === 'avatar') {
+                previewImage(input, 'avatar_preview_img');
+            }
+            await triggerSilentAutoSave(fieldName, input.files[0]);
+        }
+    }
+
+    async function loadStudents() {
+        const response = await fetch('/api/students');
+        allStudents = await response.json();
+        document.getElementById('totalStudentsCount').innerText = allStudents.length;
+        buildCityFilterOptions();
+        filterStudents();
+    }
+
+    async function loadDocTemplates() {
+        const response = await fetch('/api/templates');
+        docTemplates = await response.json();
+    }
+
+    function buildCityFilterOptions() {
+        const currentSelection = document.getElementById('cityFilter').value;
+        const cities = [...new Set(allStudents.map(s => s.city).filter(Boolean))].sort();
+        const select = document.getElementById('cityFilter');
+        select.innerHTML = '<option value="">כל הערים</option>';
+        cities.forEach(c => select.insertAdjacentHTML('beforeend', `<option value="${c}">${c}</option>`));
+        select.value = currentSelection;
+    }
+
+    function toggleAdvancedFilters() {
+        const section = document.getElementById('advancedFiltersSection');
+        section.style.display = (section.style.display === 'flex') ? 'none' : 'flex';
+    }
+
+    function updateColumnsVisibility() {
+        document.querySelectorAll('.col-toggle').forEach(cb => {
+            const colClass = cb.value;
+            document.querySelectorAll(`.${colClass}`).forEach(el => {
+                cb.checked ? el.classList.remove('d-none') : el.classList.add('d-none');
+            });
+        });
+    }
+
+    function sortTable(columnKey, headerElement) {
+        if (currentSortColumn === columnKey) {
+            currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSortColumn = columnKey;
+            currentSortDirection = 'asc';
+        }
+        document.querySelectorAll('.sortable-header').forEach(el => {
+            el.classList.remove('asc', 'desc');
+            const icon = el.querySelector('.sort-icon');
+            if(icon) icon.innerText = '↕';
+        });
+        headerElement.classList.add(currentSortDirection);
+        headerElement.querySelector('.sort-icon').innerText = currentSortDirection === 'asc' ? '↑' : '↓';
+
+        filteredStudents.sort((a, b) => {
+            let valA = a[columnKey] ? a[columnKey].toString().trim() : '';
+            let valB = b[columnKey] ? b[columnKey].toString().trim() : '';
+            if (!isNaN(valA) && !isNaN(valB) && valA !== '' && valB !== '') {
+                return currentSortDirection === 'asc' ? Number(valA) - Number(valB) : Number(valB) - Number(valA);
+            }
+            return currentSortDirection === 'asc' ? valA.localeCompare(valB, 'he', { numeric: true }) : valB.localeCompare(valA, 'he', { numeric: true });
+        });
+        renderTable(filteredStudents);
+    }
+
+    function renderTable(students) {
+        const tbody = document.getElementById('studentsTableBody');
+        tbody.innerHTML = '';
+        students.forEach(s => {
+            const avatarImg = s.avatar_path ? s.avatar_path : 'https://via.placeholder.com/40?text=ת';
+            const idBadge = s.is_passport === 1 ? `<span class="badge bg-warning text-dark">דרכון: ${s.tz}</span>` : `<span>${s.tz || ''}</span>`;
+            const docBadge = (s.id_photo_exists === 1 || s.id_photo_path) ? '<span class="badge bg-success">קים V</span>' : '<span class="badge bg-secondary">לא הועלה</span>';
+            const jlemBranchBadge = s.is_jerusalem_branch === 1 ? '<span class="badge bg-info text-dark me-1">סניף ירושלים</span>' : '';
+
+            tbody.insertAdjacentHTML('beforeend', `<tr class="clickable-row" ondblclick="openEditModal(${s.id})">
+                <td class="col-avatar"><img src="${avatarImg}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;"></td>
+                <td class="col-id">${s.id}</td>
+                <td class="col-last_name"><strong>${s.last_name || ''}</strong></td>
+                <td class="col-first_name">${s.first_name || ''}</td>
+                <td class="col-tz">${idBadge}</td>
+                <td class="col-city">${s.city || ''}</td>
+                <td class="col-phone">${s.phone || ''}</td>
+                <td class="col-additional_phone">${s.additional_phone || ''}</td>
+                <td class="col-cycle">${s.cycle || ''}</td>
+                <td class="col-status">${s.status || ''}</td>
+                <td class="col-previous_institution">${s.previous_institution || ''}</td>
+                <td class="col-address">${s.address || ''}</td>
+                <td class="col-neighborhood">${s.neighborhood || ''}</td>
+                <td class="col-father_name">${s.father_name || ''}</td>
+                <td class="col-mother_name">${s.mother_name || ''}</td>
+                <td class="col-birth_gregorian">${s.birth_date_gregorian || ''}</td>
+                <td class="col-birth_hebrew">${s.birth_date_hebrew || ''}</td>
+                <td class="col-entry_date">${s.entry_date || ''}</td>
+                <td class="col-leave_date">${s.leave_date || ''}</td>
+                <td class="col-wedding_date">${s.wedding_date || ''}</td>
+                <td class="col-voicemail">${s.voicemail || ''}</td>
+                <td class="col-telephony">${s.telephony_code || ''}</td>
+                <td class="col-strengthening">${jlemBranchBadge}${s.strengthening || ''}</td>
+                <td class="col-id_doc">${docBadge}</td>
+                <td><button class="btn btn-sm btn-outline-primary" onclick="openEditModal(${s.id}); event.stopPropagation();">עריכה</button></td>
+            </tr>`);
+        });
+        document.getElementById('studentCounterText').innerText = `מוצגים ${students.length} תלמידים`;
+        updateColumnsVisibility();
+    }
+
+    function filterStudents() {
+        const searchVal = document.getElementById('searchInput').value.toLowerCase();
+        const statusVal = document.getElementById('statusFilter').value;
+        const cycleVal = document.getElementById('cycleFilter').value.trim().toLowerCase();
+        const cityVal = document.getElementById('cityFilter').value;
+        const missingDocsVal = document.getElementById('missingDocsFilter').value;
+        const docVal = document.getElementById('docFilter').value;
+        const previousInstVal = document.getElementById('previousInstFilter') ? document.getElementById('previousInstFilter').value.toLowerCase() : '';
+        const neighborhoodVal = document.getElementById('neighborhoodFilter') ? document.getElementById('neighborhoodFilter').value.toLowerCase() : '';
+        const aiQuery = document.getElementById('aiSearchInput').value.trim().toLowerCase();
+
+        filteredStudents = allStudents.filter(s => {
+            if (aiQuery !== "") {
+                if (aiQuery === "פעילים" || aiQuery === "פעיל") {
+                    if (s.leave_date && s.leave_date.trim() !== "") return false;
+                }
+                else if (aiQuery === "עזבו" || aiQuery === "עזב") {
+                    if (!s.leave_date || s.leave_date.trim() === "") return false;
+                }
+                else if (aiQuery === "נשוי") {
+                    if (s.status !== "נשוי") return false;
+                }
+                else if (aiQuery === "לא נשוי" || aiQuery === "רווק") {
+                    if (s.status === "נשוי") return false;
+                }
+                else if (aiQuery === "היו בחיזוק" || aiQuery === "חיזוק" || aiQuery === "בחיזוק") {
+                    if (!s.strengthening || s.strengthening.trim() === "") return false;
+                }
+                else if (aiQuery === "סניף ירושלים" || aiQuery === "ירושלים") {
+                    if (s.is_jerusalem_branch !== 1) return false;
+                }
+                else {
+                    const words = aiQuery.split(" ");
+                    for (let word of words) {
+                        const inFirstName = s.first_name && s.first_name.toLowerCase().includes(word);
+                        const inLastName = s.last_name && s.last_name.toLowerCase().includes(word);
+                        const inCity = s.city && s.city.toLowerCase().includes(word);
+                        if (!inFirstName && !inLastName && !inCity) return false;
+                    }
+                }
+            }
+
+            let matchCycle = true;
+            if (cycleVal === "ריק" || cycleVal === "ללא") {
+                matchCycle = (!s.cycle || s.cycle.trim() === "");
+            } else if (cycleVal) {
+                matchCycle = (s.cycle && s.cycle.toLowerCase().includes(cycleVal));
+            }
+
+            let matchSearch = true;
+            if (searchVal) {
+                matchSearch = (s.first_name && s.first_name.toLowerCase().includes(searchVal)) ||
+                              (s.last_name && s.last_name.toLowerCase().includes(searchVal)) ||
+                              (s.tz && s.tz.includes(searchVal)) ||
+                              (s.city && s.city.toLowerCase().includes(searchVal)) ||
+                              (s.phone && s.phone.includes(searchVal)) ||
+                              (s.additional_phone && s.additional_phone.includes(searchVal));
+            }
+
+            let matchMissingDocs = true;
+            if (missingDocsVal === 'no_id_photo') {
+                matchMissingDocs = (!s.id_photo_path && s.id_photo_exists !== 1);
+            } else if (missingDocsVal === 'has_id_photo') {
+                matchMissingDocs = (s.id_photo_path || s.id_photo_exists === 1);
+            } else if (missingDocsVal === 'no_avatar') {
+                matchMissingDocs = (!s.avatar_path);
+            } else if (missingDocsVal === 'has_avatar') {
+                matchMissingDocs = (!!s.avatar_path);
+            }
+
+            return matchSearch
+                && (!statusVal || s.status === statusVal)
+                && matchCycle
+                && (!cityVal || s.city === cityVal)
+                && (!docVal || (docVal === 'id' && s.is_passport !== 1) || (docVal === 'passport' && s.is_passport === 1))
+                && (!previousInstVal || (s.previous_institution && s.previous_institution.toLowerCase().includes(previousInstVal)))
+                && (!neighborhoodVal || (s.neighborhood && s.neighborhood.toLowerCase().includes(neighborhoodVal)))
+                && matchMissingDocs;
+        });
+
+        if (currentSortColumn !== '') {
+            filteredStudents.sort((a, b) => {
+                let valA = a[currentSortColumn] ? a[currentSortColumn].toString().trim() : '';
+                let valB = b[currentSortColumn] ? b[currentSortColumn].toString().trim() : '';
+                if (!isNaN(valA) && !isNaN(valB) && valA !== '' && valB !== '') {
+                    return currentSortDirection === 'asc' ? Number(valA) - Number(valB) : Number(valB) - Number(valA);
+                }
+                return currentSortDirection === 'asc' ? valA.localeCompare(valB, 'he', { numeric: true }) : valB.localeCompare(valA, 'he', { numeric: true });
+            });
+        }
+
+        renderTable(filteredStudents);
+    }
+
+    function navigateStudent(direction) {
+        if (filteredStudents.length === 0 || currentlyOpenStudentId === null) return;
+        
+        const currentIndex = filteredStudents.findIndex(s => s.id === currentlyOpenStudentId);
+        if (currentIndex === -1) return;
+        
+        let nextIndex = currentIndex + direction;
+        
+        if (nextIndex < 0) {
+            nextIndex = filteredStudents.length - 1;
+        } else if (nextIndex >= filteredStudents.length) {
+            nextIndex = 0;
+        }
+        
+        const nextStudent = filteredStudents[nextIndex];
+        openEditModal(nextStudent.id);
+    }
+
+    async function removeCurrentIdPhoto() {
+        if (!currentlyOpenStudentId) return;
+        if (confirm("האם אתה בטוח שברצונך להסיר את קובץ צילום תעודת הזהות של התלמיד?")) {
+            const response = await fetch(`/api/students/${currentlyOpenStudentId}/delete-id-photo`, { method: 'POST' });
+            if (response.ok) {
+                document.getElementById('id_photo_path_val').value = '';
+                document.getElementById('id_photo').value = '';
+                
+                const statusBadge = document.getElementById('id_photo_status_badge');
+                statusBadge.innerText = "לא הועלה קובץ";
+                statusBadge.className = "input-group-text";
+                
+                document.getElementById('view_file_link_container').classList.add('d-none');
+                document.getElementById('delete_id_photo_btn').classList.add('d-none');
+                
+                loadStudents();
+            }
+        }
+    }
+
+    function exportToExcel() {
+        if (filteredStudents.length < allStudents.length && filteredStudents.length > 0) {
+            document.getElementById('filteredCountText').innerText = filteredStudents.length;
+            document.getElementById('filteredBtnText').innerText = filteredStudents.length;
+            document.getElementById('totalCountText').innerText = allStudents.length;
+            exportModal.show();
+        } else {
+            window.location.href = '/api/export';
+        }
+    }
+
+    async function confirmExport(onlyFiltered) {
+        exportModal.hide();
+        if (onlyFiltered) {
+            const ids = filteredStudents.map(s => s.id);
+            const response = await fetch('/api/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: ids })
+            });
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = "exported_students.xlsx";
+                document.body.appendChild(a); a.click(); a.remove();
+            }
+        } else {
+            window.location.href = '/api/export';
+        }
+    }
+
+    function openNewStudentModal() {
+        currentlyOpenStudentId = null;
+        document.getElementById('studentForm').reset();
+        document.getElementById('student_id').value = '';
+        document.getElementById('id_photo_path_val').value = '';
+        document.getElementById('avatar_preview_img').src = "https://via.placeholder.com/100?text=אין+תמונה";
+        document.getElementById('view_file_link_container').classList.add('d-none');
+        document.getElementById('delete_id_photo_btn').classList.add('d-none');
+        document.getElementById('deleteBtn').style.display = 'none';
+        studentModal.show();
+    }
+
+    function openEditModal(id) {
+        document.getElementById('studentForm').reset();
+        const s = allStudents.find(student => student.id === id);
+        if(!s) return;
+
+        currentlyOpenStudentId = s.id;
+
+        document.getElementById('deleteBtn').style.display = 'block';
+        document.getElementById('student_id').value = s.id;
+        document.getElementById('last_name').value = s.last_name || '';
+        document.getElementById('first_name').value = s.first_name || '';
+        document.getElementById('tz').value = s.tz || '';
+        document.getElementById('is_passport').value = s.is_passport || "0";
+        document.getElementById('passport_country').value = s.passport_country || '';
+        document.getElementById('passport_expiry').value = s.passport_expiry || '';
+        document.getElementById('status').value = s.status || '';
+        document.getElementById('birth_date_gregorian').value = s.birth_date_gregorian || '';
+        document.getElementById('birth_date_hebrew').value = s.birth_date_hebrew || '';
+        document.getElementById('city').value = s.city || '';
+        document.getElementById('neighborhood').value = s.neighborhood || '';
+        document.getElementById('address').value = s.address || '';
+        document.getElementById('phone').value = s.phone || '';
+        document.getElementById('additional_phone').value = s.additional_phone || '';
+        document.getElementById('father_name').value = s.father_name || '';
+        document.getElementById('mother_name').value = s.mother_name || '';
+        document.getElementById('mother_maiden_name').value = s.mother_maiden_name || '';
+        document.getElementById('previous_institution').value = s.previous_institution || '';
+        document.getElementById('cycle').value = s.cycle || '';
+        document.getElementById('voicemail').value = s.voicemail || '';
+        document.getElementById('telephony_code').value = s.telephony_code || '';
+        document.getElementById('entry_date').value = s.entry_date || '';
+        document.getElementById('leave_date').value = s.leave_date || '';
+        document.getElementById('wedding_date').value = s.wedding_date || '';
+        document.getElementById('strengthening').value = s.strengthening || '';
+        document.getElementById('is_jerusalem_branch').value = s.is_jerusalem_branch || "0";
+        document.getElementById('id_photo_path_val').value = s.id_photo_path || '';
+        
+        if (s.avatar_path) {
+            document.getElementById('avatar_preview_img').src = s.avatar_path;
+            document.getElementById('avatar_actions_container').classList.remove('d-none');
+            document.getElementById('download_avatar_btn').href = s.avatar_path;
+        } else {
+            document.getElementById('avatar_preview_img').src = "https://via.placeholder.com/100?text=אין+תמונה";
+            document.getElementById('avatar_actions_container').classList.add('d-none');
+            document.getElementById('download_avatar_btn').href = "#";
+        }
+        
+        const statusBadge = document.getElementById('id_photo_status_badge');
+        const deleteIdPhotoBtn = document.getElementById('delete_id_photo_btn');
+        if (s.id_photo_path || s.id_photo_exists === 1) {
+            statusBadge.innerText = "הועלה בהצלחה V"; statusBadge.className = "input-group-text bg-success text-white";
+            document.getElementById('view_file_link_container').classList.remove('d-none');
+            document.getElementById('view_file_link').href = s.id_photo_path;
+            if (deleteIdPhotoBtn) deleteIdPhotoBtn.classList.remove('d-none');
+        } else {
+            statusBadge.innerText = "לא הועלה קובץ"; statusBadge.className = "input-group-text";
+            document.getElementById('view_file_link_container').classList.add('d-none');
+            if (deleteIdPhotoBtn) deleteIdPhotoBtn.classList.add('d-none');
+        }
+
+        const container = document.getElementById('pdfApprovalsContainer');
+        container.innerHTML = '';
+        docTemplates.forEach(t => {
+            container.insertAdjacentHTML('beforeend', `<a href="/api/students/${s.id}/print/${t.id}" class="btn btn-sm btn-primary">🖨️ הדפס ${t.title}</a>`);
+        });
+
+        document.getElementById('header_student_name').innerText = `${s.first_name} ${s.last_name}`;
+        document.getElementById('header_student_tz').innerText = `זיהוי: ${s.tz}`;
+        studentModal.show();
+    }
+
+    async function saveStudent() {
+        const phoneInput = document.getElementById('phone');
+        if (phoneInput && phoneInput.value.trim() !== "" && !phoneInput.value.trim().startsWith('0')) {
+            phoneInput.value = "0" + phoneInput.value.trim();
+        }
+        await fetch('/api/students/save', { method: 'POST', body: new FormData(document.getElementById('studentForm')) });
+        
+        const response = await fetch('/api/students');
+        allStudents = await response.json();
+        document.getElementById('totalStudentsCount').innerText = allStudents.length;
+        filterStudents();
+        
+        openEditModal(currentlyOpenStudentId);
+    }
+
+    async function submitImport() {
+        const fileInput = document.getElementById('excel_file');
+        const formData = new FormData();
+        formData.append("excel_file", fileInput.files[0]);
+        const response = await fetch('/api/import-excel', { method: "POST", body: formData });
+        if (response.ok) { loadStudents(); bootstrap.Modal.getInstance(document.getElementById('importModal')).hide(); }
+    }
+
+    function loadTemplatesSettings() {
+        const selector = document.getElementById('templateSelector');
+        selector.innerHTML = '';
+        docTemplates.forEach((t, index) => selector.insertAdjacentHTML('beforeend', `<option value="${index}">${t.title}</option>`));
+        onTemplateSelectChange();
+    }
+
+    function onTemplateSelectChange() {
+        const index = document.getElementById('templateSelector').value;
+        if(docTemplates[index]) { document.getElementById('templateContentTextarea').value = docTemplates[index].content; }
+    }
+
+    async function saveTemplateText() {
+        const index = document.getElementById('templateSelector').value;
+        const title = docTemplates[index].title;
+        const content = document.getElementById('templateContentTextarea').value;
+        await fetch('/api/templates/save', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({title, content}) });
+        loadDocTemplates(); bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide();
+    }
+
+    function previewImage(input, previewId) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = e => document.getElementById(previewId).src = e.target.result;
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    async function autoConvertHebrewDate() {
+        const gregDate = document.getElementById('birth_date_gregorian').value;
+        if (!gregDate) return;
+        const response = await fetch(`/api/convert-date?date=${gregDate}`);
+        if (response.ok) { document.getElementById('birth_date_hebrew').value = (await response.json()).hebrew; }
+    }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

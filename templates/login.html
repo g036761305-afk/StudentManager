@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>התחברות למערכת</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+    <style>
+        body {
+            background-color: #eef2f7;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .login-card {
+            width: 100%;
+            max-width: 400px;
+            padding: 30px;
+            border-radius: 16px;
+            background: #ffffff;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+        }
+        .login-title {
+            font-weight: 700;
+            color: #0d6efd;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="login-card">
+    <h3 class="login-title">🔒 התחברות למערכת</h3>
+    
+    {% if error %}
+        <div class="alert alert-danger text-center p-2 small mb-3">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/login">
+        <div class="mb-3">
+            <label class="form-label fw-semibold">שם משתמש</label>
+            <input type="text" name="username" class="form-control" placeholder="הכנס שם משתמש" required autofocus>
+        </div>
+        <div class="mb-4">
+            <label class="form-label fw-semibold">סיסמה</label>
+            <input type="password" name="password" class="form-control" placeholder="הכנס סיסמה" required>
+        </div>
+        <button type="submit" class="btn btn-primary w-100 fw-bold py-2">התחבר</button>
+    </form>
+</div>
+
+</body>
+</html>
