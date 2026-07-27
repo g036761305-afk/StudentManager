@@ -25,17 +25,14 @@ os.makedirs(os.path.join(UPLOAD_FOLDER, 'id_photos'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'avatars'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'batch_photos'), exist_ok=True)
 
-# טעינת גופנים עבריים מתוך תיקיית הפרויקט
+# טעינה מפורשת של הפונט העברי מתוך תיקיית הפרויקט
 FONT_PATH = os.path.join(os.path.dirname(__file__), 'arial.ttf')
+
 if os.path.exists(FONT_PATH):
-    pdfmetrics.registerFont(TTFont('David', FONT_PATH))
-    pdfmetrics.registerFont(TTFont('David-Bold', FONT_PATH))
+    pdfmetrics.registerFont(TTFont('HebrewFont', FONT_PATH))
+    DEFAULT_FONT = 'HebrewFont'
 else:
-    try:
-        pdfmetrics.registerFont(TTFont('David', 'C:\\Windows\\Fonts\\arial.ttf'))
-        pdfmetrics.registerFont(TTFont('David-Bold', 'C:\\Windows\\Fonts\\arialbd.ttf'))
-    except:
-        pass
+    DEFAULT_FONT = 'Helvetica'
 
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME)
@@ -507,8 +504,8 @@ def generate_pdf(student_id, template_id):
     if os.path.exists(bg_path): p.drawImage(bg_path, 0, 0, width=width, height=height)
     stamp_path = "stamp.png"
     if os.path.exists(stamp_path): p.drawImage(stamp_path, 75, 160, width=160, height=80, mask='auto')
-    try: p.setFont('David', 12)
-    except: p.setFont('Helvetica', 12)
+    
+    p.setFont(DEFAULT_FONT, 12)
     p.drawRightString(width - 50, height - 190, fix_hebrew_text('בס"ד'))
     p.drawString(50, height - 190, fix_hebrew_text("ע.ר. 580107613"))
     try:
@@ -520,12 +517,10 @@ def generate_pdf(student_id, template_id):
     p.drawString(50, height - 215, fix_hebrew_text(date_heb))
     p.drawString(50, height - 235, date_greg)
     
-    try: p.setFont('David-Bold', 28)
-    except: p.setFont('Helvetica-Bold', 28)
+    p.setFont(DEFAULT_FONT, 28)
     p.drawCentredString(width / 2.0, height - 320, fix_hebrew_text('אישור תלמיד'))
     
-    try: p.setFont('David', 18)
-    except: p.setFont('Helvetica', 18)
+    p.setFont(DEFAULT_FONT, 18)
     id_label = "דרכון מס'" if student['is_passport'] == 1 else "ת.ז."
     text_content = template['content']
     text_content = text_content.replace("{שם_פרטי}", student['first_name'] or '').replace("{שם_משפחה}", student['last_name'] or '').replace("{סוג_זיהוי}", id_label).replace("{תעודת_זהות}", student['tz'] or '')
