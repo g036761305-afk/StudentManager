@@ -35,7 +35,7 @@ if os.path.exists(FONT_PATH):
 else:
     DEFAULT_FONT = 'Helvetica'
 
-# הגדרת מנוע מסד הנתונים - עובד מול PostgreSQL אם מוגדר, אחרת מול SQLite מקומי
+# הגדרת מנוע מסד הנתונים
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
     if DATABASE_URL.startswith("postgres://"):
@@ -44,21 +44,13 @@ if DATABASE_URL:
 else:
     engine = create_engine(f'sqlite:///{DB_NAME}')
 
-def get_db_connection():
-    if DATABASE_URL:
-        conn = sqlite3.connect(DB_NAME)
-        conn.row_factory = sqlite3.Row
-        return conn
-    else:
-        conn = sqlite3.connect(DB_NAME)
-        conn.row_factory = sqlite3.Row
-        return conn
-
-def execute_query(query, params=()):
+def execute_query(query, params=None):
+    if params is None:
+        params = {}
     with engine.begin() as conn:
         result = conn.execute(text(query), params)
         if result.returns_rows:
-            return [dict(row._mapping) for row in result.fetchall()]
+            return [dict(row) for row in result.mappings()]
         return None
 
 def int_to_gematria(num):
@@ -552,7 +544,9 @@ def export_excel():
     df.to_excel(output_path, index=False)
     return send_file(output_path, as_attachment=True)
 
+# יצירת הטבלאות במידת הצורך בעת העלייה
+init_db()
+
 if __name__ == '__main__':
-    init_db()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
