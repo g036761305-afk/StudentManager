@@ -4,3 +4,5 @@ pandas
 openpyxl
 pyluach
 reportlab
+psycopg2-binary
+SQLAlchemy
