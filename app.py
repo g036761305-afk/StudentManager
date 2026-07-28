@@ -235,7 +235,7 @@ def index():
 
 @app.route('/api/students', methods=['GET'])
 def get_students():
-    sync_id_photos_from_folder()
+    # שים לב: הסרנו מפה את sync_id_photos_from_folder() כדי לפתור את בעיית האיטיות
     rows = execute_query("SELECT * FROM students") or []
     return jsonify(rows)
 
