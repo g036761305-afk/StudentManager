@@ -271,7 +271,8 @@ def index():
 
 @app.route('/api/students', methods=['GET'])
 def get_students():
-    rows = execute_query("SELECT * FROM students") or []
+    # שליפת התלמידים ממוינים לפי ID בסדר עולה
+    rows = execute_query("SELECT * FROM students ORDER BY id ASC") or []
     
     # סנכרון והורדה אוטומטית של תמונות בעת טעינת הנתונים
     for row in rows:
@@ -575,10 +576,10 @@ def export_excel():
             req_data = request.get_json()
             student_ids = req_data.get('ids', [])
             if student_ids:
-                df = pd.read_sql_query("SELECT * FROM students WHERE id IN :ids", engine, params={"ids": tuple(student_ids)})
-            else: df = pd.read_sql_query("SELECT * FROM students", engine)
-        except Exception: df = pd.read_sql_query("SELECT * FROM students", engine)
-    else: df = pd.read_sql_query("SELECT * FROM students", engine)
+                df = pd.read_sql_query("SELECT * FROM students WHERE id IN :ids ORDER BY id ASC", engine, params={"ids": tuple(student_ids)})
+            else: df = pd.read_sql_query("SELECT * FROM students ORDER BY id ASC", engine)
+        except Exception: df = pd.read_sql_query("SELECT * FROM students ORDER BY id ASC", engine)
+    else: df = pd.read_sql_query("SELECT * FROM students ORDER BY id ASC", engine)
         
     hebrew_columns = {
         'id': 'מזהה', 'last_name': 'שם משפחה', 'first_name': 'שם פרטי', 'tz': 'תעודת זהות',
