@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import urllib.request
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, session, redirect, url_for
 import pandas as pd
 from werkzeug.utils import secure_filename
@@ -29,7 +30,7 @@ os.makedirs(os.path.join(UPLOAD_FOLDER, 'id_photos'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'avatars'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'batch_photos'), exist_ok=True)
 
-# הגדרת Cloudinary מתוך משתני הסביבה או ברירת מחדל
+# הגדרת Cloudinary
 cloudinary.config(
     cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME', 'tusisaci'),
     api_key=os.environ.get('CLOUDINARY_API_KEY', '483242616177883'),
@@ -37,11 +38,6 @@ cloudinary.config(
 )
 
 def save_uploaded_file(file, folder_name, custom_filename):
-    """
-    פונקציית עזר להעלאת קובץ:
-    1. שומרת את הקובץ פיזית בתיקיית uploads במחשב (עבור אופליין).
-    2. מעלה עותק ל-Cloudinary ומחזירה את הקישור הענני הקבוע.
-    """
     if not file or file.filename == '':
         return None
     
@@ -51,25 +47,23 @@ def save_uploaded_file(file, folder_name, custom_filename):
     local_path = os.path.join(local_dir, custom_filename)
     file.save(local_path)
     
-    # 2. העלאת העותק שנשמר בדיסק ל-Cloudinary
+    # 2. העלאה ל-Cloudinary
     try:
         upload_result = cloudinary.uploader.upload(local_path, folder=folder_name)
         return upload_result.get('secure_url')
     except Exception as e:
         print(f"Error uploading to Cloudinary: {e}")
-        # במקרה של חוסר חיבור לרשת או שגיאה, מוחזר הנתיב המקומי
         return f"/uploads/{folder_name}/{custom_filename}"
 
-# טעינה מפורשת של הפונט העברי מתוך תיקיית הפרויקט
+# טעינת הפונט העברי
 FONT_PATH = os.path.join(os.path.dirname(__file__), 'arial.ttf')
-
 if os.path.exists(FONT_PATH):
     pdfmetrics.registerFont(TTFont('HebrewFont', FONT_PATH))
     DEFAULT_FONT = 'HebrewFont'
 else:
     DEFAULT_FONT = 'Helvetica'
 
-# הגדרת מנוע מסד הנתונים
+# הגדרת מסד הנתונים
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
     if DATABASE_URL.startswith("postgres://"):
@@ -258,6 +252,23 @@ def index():
 @app.route('/api/students', methods=['GET'])
 def get_students():
     rows = execute_query("SELECT * FROM students") or []
+    
+    # בדיקת התאמה לנתיב המקומי במידה והקובץ הורד למחשב (לתמיכה באופליין)
+    for row in rows:
+        # בדיקת תמונת פרופיל
+        if row.get('avatar_path') and row['avatar_path'].startswith('http'):
+            filename = os.path.basename(row['avatar_path'])
+            local_file = os.path.join(app.config['UPLOAD_FOLDER'], 'avatars', filename)
+            if os.path.exists(local_file):
+                row['avatar_path'] = f"/uploads/avatars/{filename}"
+
+        # בדיקת צילום ת"ז
+        if row.get('id_photo_path') and row['id_photo_path'].startswith('http'):
+            filename = os.path.basename(row['id_photo_path'])
+            local_file = os.path.join(app.config['UPLOAD_FOLDER'], 'id_photos', filename)
+            if os.path.exists(local_file):
+                row['id_photo_path'] = f"/uploads/id_photos/{filename}"
+                
     return jsonify(rows)
 
 @app.route('/api/students/save', methods=['POST'])
@@ -281,7 +292,6 @@ def save_student():
     id_photo_path = current_id_photo_path
     id_photo_exists = current_id_photo_exists
     
-    # טיפול בצילום תעודת זהות (שמירה מקומית + העלאה ל-Cloudinary)
     if 'id_photo' in request.files:
         file = request.files['id_photo']
         if file and file.filename != '':
@@ -291,7 +301,6 @@ def save_student():
                 id_photo_path = uploaded_url
                 id_photo_exists = 1
 
-    # טיפול בתמונת פרופיל (שמירה מקומית + העלאה ל-Cloudinary)
     avatar_path = current_avatar_path
     if 'avatar' in request.files:
         file = request.files['avatar']
@@ -355,6 +364,39 @@ def save_student():
             )
         ''', params)
     return jsonify({"status": "success"})
+
+# נתיב סנכרון והורדה אוטומטית של תמונות מהענן למחשב המקומי
+@app.route('/api/sync-photos', methods=['GET', 'POST'])
+def sync_photos():
+    rows = execute_query("SELECT avatar_path, id_photo_path FROM students") or []
+    downloaded_count = 0
+
+    for row in rows:
+        # סנכרון תמונות פרופיל
+        avatar_url = row.get('avatar_path')
+        if avatar_url and avatar_url.startswith('http'):
+            filename = os.path.basename(avatar_url)
+            local_path = os.path.join(app.config['UPLOAD_FOLDER'], 'avatars', filename)
+            if not os.path.exists(local_path):
+                try:
+                    urllib.request.urlretrieve(avatar_url, local_path)
+                    downloaded_count += 1
+                except Exception as e:
+                    print(f"Error downloading avatar {filename}: {e}")
+
+        # סנכרון צילומי ת"ז
+        id_photo_url = row.get('id_photo_path')
+        if id_photo_url and id_photo_url.startswith('http'):
+            filename = os.path.basename(id_photo_url)
+            local_path = os.path.join(app.config['UPLOAD_FOLDER'], 'id_photos', filename)
+            if not os.path.exists(local_path):
+                try:
+                    urllib.request.urlretrieve(id_photo_url, local_path)
+                    downloaded_count += 1
+                except Exception as e:
+                    print(f"Error downloading id_photo {filename}: {e}")
+
+    return jsonify({"status": "success", "downloaded": downloaded_count, "message": f"סונכרנו {downloaded_count} תמונות חדשות למחשב המקומי!"})
 
 @app.route('/api/students/<int:student_id>/delete-avatar', methods=['POST'])
 def delete_avatar(student_id):
@@ -567,7 +609,6 @@ def export_excel():
     df.to_excel(output_path, index=False)
     return send_file(output_path, as_attachment=True)
 
-# יצירת הטבלאות במידת הצורך בעת העלייה
 init_db()
 
 if __name__ == '__main__':
