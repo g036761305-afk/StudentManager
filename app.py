@@ -20,7 +20,8 @@ app = Flask(__name__)
 app.secret_key = 'super_secret_local_key_change_if_needed'
 
 DB_NAME = "students.db"
-UPLOAD_FOLDER = 'uploads'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -38,25 +39,25 @@ cloudinary.config(
 def save_uploaded_file(file, folder_name, custom_filename):
     """
     פונקציית עזר להעלאת קובץ:
-    1. שומרת את הקובץ מקומית בתיקיית uploads במחשב (עבור אופליין).
-    2. מעלה את הקובץ ל-Cloudinary ומחזירה את הקישור הענני הקבוע.
+    1. שומרת את הקובץ פיזית בתיקיית uploads במחשב (עבור אופליין).
+    2. מעלה עותק ל-Cloudinary ומחזירה את הקישור הענני הקבוע.
     """
     if not file or file.filename == '':
         return None
     
-    # 1. שמירה מקומית בתיקייה
+    # 1. שמירה מקומית פיזית במחשב
     local_dir = os.path.join(app.config['UPLOAD_FOLDER'], folder_name)
     os.makedirs(local_dir, exist_ok=True)
     local_path = os.path.join(local_dir, custom_filename)
     file.save(local_path)
     
-    # 2. העלאה ל-Cloudinary
+    # 2. העלאת העותק שנשמר בדיסק ל-Cloudinary
     try:
         upload_result = cloudinary.uploader.upload(local_path, folder=folder_name)
         return upload_result.get('secure_url')
     except Exception as e:
         print(f"Error uploading to Cloudinary: {e}")
-        # במקרה שאין חיבור לרשת או שיש שגיאה, מוחזר הנתיב המקומי
+        # במקרה של חוסר חיבור לרשת או שגיאה, מוחזר הנתיב המקומי
         return f"/uploads/{folder_name}/{custom_filename}"
 
 # טעינה מפורשת של הפונט העברי מתוך תיקיית הפרויקט
