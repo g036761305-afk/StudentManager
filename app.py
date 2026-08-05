@@ -81,6 +81,31 @@ def execute_query(query, params=None):
             return [dict(row) for row in result.mappings()]
         return None
 
+def auto_download_missing_photos():
+    """פונקציה קבועה שמורידה אוטומטית ברקע תמונות חסרות מהענן לדיסק המקומי"""
+    try:
+        rows = execute_query("SELECT avatar_path, id_photo_path FROM students") or []
+        for row in rows:
+            # הורדת תמונות פרופיל
+            avatar_url = row.get('avatar_path')
+            if avatar_url and avatar_url.startswith('http'):
+                filename = os.path.basename(avatar_url)
+                local_path = os.path.join(app.config['UPLOAD_FOLDER'], 'avatars', filename)
+                if not os.path.exists(local_path):
+                    try: urllib.request.urlretrieve(avatar_url, local_path)
+                    except Exception: pass
+
+            # הורדת צילומי ת"ז
+            id_photo_url = row.get('id_photo_path')
+            if id_photo_url and id_photo_url.startswith('http'):
+                filename = os.path.basename(id_photo_url)
+                local_path = os.path.join(app.config['UPLOAD_FOLDER'], 'id_photos', filename)
+                if not os.path.exists(local_path):
+                    try: urllib.request.urlretrieve(id_photo_url, local_path)
+                    except Exception: pass
+    except Exception as e:
+        print(f"Auto sync bypass (offline mode or db not ready): {e}")
+
 def int_to_gematria(num):
     gematria_map = [
         (1000, ''), (900, 'תתק'), (800, 'תת'), (700, 'תש'), (600, 'תר'), (500, 'תק'), (400, 'ת'),
@@ -158,6 +183,9 @@ def init_db():
             conn.execute(text("INSERT INTO users (username, password_hash) VALUES (:u, :p)"), {"u": "מנהל ראשי", "p": default_hash})
 
         conn.execute(text('CREATE TABLE IF NOT EXISTS document_templates (id SERIAL PRIMARY KEY, title TEXT UNIQUE, content TEXT)'))
+    
+    # הפעלת סנכרון תמונות אוטומטי בעת עליית המערכת
+    auto_download_missing_photos()
 
 @app.before_request
 def require_login():
@@ -253,16 +281,14 @@ def index():
 def get_students():
     rows = execute_query("SELECT * FROM students") or []
     
-    # בדיקת התאמה לנתיב המקומי במידה והקובץ הורד למחשב (לתמיכה באופליין)
+    # בדיקה חכמה להצגת תמונות מקומיות במידה וקיים קובץ מקומי (עבור מצב אופליין)
     for row in rows:
-        # בדיקת תמונת פרופיל
         if row.get('avatar_path') and row['avatar_path'].startswith('http'):
             filename = os.path.basename(row['avatar_path'])
             local_file = os.path.join(app.config['UPLOAD_FOLDER'], 'avatars', filename)
             if os.path.exists(local_file):
                 row['avatar_path'] = f"/uploads/avatars/{filename}"
 
-        # בדיקת צילום ת"ז
         if row.get('id_photo_path') and row['id_photo_path'].startswith('http'):
             filename = os.path.basename(row['id_photo_path'])
             local_file = os.path.join(app.config['UPLOAD_FOLDER'], 'id_photos', filename)
@@ -364,39 +390,6 @@ def save_student():
             )
         ''', params)
     return jsonify({"status": "success"})
-
-# נתיב סנכרון והורדה אוטומטית של תמונות מהענן למחשב המקומי
-@app.route('/api/sync-photos', methods=['GET', 'POST'])
-def sync_photos():
-    rows = execute_query("SELECT avatar_path, id_photo_path FROM students") or []
-    downloaded_count = 0
-
-    for row in rows:
-        # סנכרון תמונות פרופיל
-        avatar_url = row.get('avatar_path')
-        if avatar_url and avatar_url.startswith('http'):
-            filename = os.path.basename(avatar_url)
-            local_path = os.path.join(app.config['UPLOAD_FOLDER'], 'avatars', filename)
-            if not os.path.exists(local_path):
-                try:
-                    urllib.request.urlretrieve(avatar_url, local_path)
-                    downloaded_count += 1
-                except Exception as e:
-                    print(f"Error downloading avatar {filename}: {e}")
-
-        # סנכרון צילומי ת"ז
-        id_photo_url = row.get('id_photo_path')
-        if id_photo_url and id_photo_url.startswith('http'):
-            filename = os.path.basename(id_photo_url)
-            local_path = os.path.join(app.config['UPLOAD_FOLDER'], 'id_photos', filename)
-            if not os.path.exists(local_path):
-                try:
-                    urllib.request.urlretrieve(id_photo_url, local_path)
-                    downloaded_count += 1
-                except Exception as e:
-                    print(f"Error downloading id_photo {filename}: {e}")
-
-    return jsonify({"status": "success", "downloaded": downloaded_count, "message": f"סונכרנו {downloaded_count} תמונות חדשות למחשב המקומי!"})
 
 @app.route('/api/students/<int:student_id>/delete-avatar', methods=['POST'])
 def delete_avatar(student_id):
@@ -609,6 +602,7 @@ def export_excel():
     df.to_excel(output_path, index=False)
     return send_file(output_path, as_attachment=True)
 
+# אתחול בסיס הנתונים וביצוע סנכרון תמונות אוטומטי
 init_db()
 
 if __name__ == '__main__':
