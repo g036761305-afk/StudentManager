@@ -13,6 +13,8 @@ import io
 import datetime
 import json
 from sqlalchemy import create_engine, text
+import cloudinary
+import cloudinary.uploader
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_local_key_change_if_needed'
@@ -25,6 +27,37 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'id_photos'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'avatars'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'batch_photos'), exist_ok=True)
+
+# הגדרת Cloudinary מתוך משתני הסביבה או ברירת מחדל
+cloudinary.config(
+    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME', 'tusisaci'),
+    api_key=os.environ.get('CLOUDINARY_API_KEY', '483242616177883'),
+    api_secret=os.environ.get('CLOUDINARY_API_SECRET', 'KoK3dOz19OY1JlLOwDEG_EFJWO8')
+)
+
+def save_uploaded_file(file, folder_name, custom_filename):
+    """
+    פונקציית עזר להעלאת קובץ:
+    1. שומרת את הקובץ מקומית בתיקיית uploads במחשב (עבור אופליין).
+    2. מעלה את הקובץ ל-Cloudinary ומחזירה את הקישור הענני הקבוע.
+    """
+    if not file or file.filename == '':
+        return None
+    
+    # 1. שמירה מקומית בתיקייה
+    local_dir = os.path.join(app.config['UPLOAD_FOLDER'], folder_name)
+    os.makedirs(local_dir, exist_ok=True)
+    local_path = os.path.join(local_dir, custom_filename)
+    file.save(local_path)
+    
+    # 2. העלאה ל-Cloudinary
+    try:
+        upload_result = cloudinary.uploader.upload(local_path, folder=folder_name)
+        return upload_result.get('secure_url')
+    except Exception as e:
+        print(f"Error uploading to Cloudinary: {e}")
+        # במקרה שאין חיבור לרשת או שיש שגיאה, מוחזר הנתיב המקומי
+        return f"/uploads/{folder_name}/{custom_filename}"
 
 # טעינה מפורשת של הפונט העברי מתוך תיקיית הפרויקט
 FONT_PATH = os.path.join(os.path.dirname(__file__), 'arial.ttf')
@@ -217,25 +250,12 @@ def delete_user(user_id):
     execute_query("DELETE FROM users WHERE id = :id", {"id": user_id})
     return jsonify({"status": "success", "message": "המשתמש נמחק בהצלחה"})
 
-def sync_id_photos_from_folder():
-    id_photos_dir = os.path.join('uploads', 'id_photos')
-    if not os.path.exists(id_photos_dir): return
-    execute_query("UPDATE students SET id_photo_exists = 0, id_photo_path = NULL")
-    for filename in os.listdir(id_photos_dir):
-        if filename.startswith("id_"):
-            parts = filename.split('_')
-            if len(parts) >= 2:
-                tz_extracted = parts[1]
-                db_path = f"/uploads/id_photos/{filename}"
-                execute_query("UPDATE students SET id_photo_exists = 1, id_photo_path = :p WHERE tz = :tz", {"p": db_path, "tz": tz_extracted})
-
 @app.route('/')
 def index():
     return render_template('index.html', username=session.get('username'))
 
 @app.route('/api/students', methods=['GET'])
 def get_students():
-    # שים לב: הסרנו מפה את sync_id_photos_from_folder() כדי לפתור את בעיית האיטיות
     rows = execute_query("SELECT * FROM students") or []
     return jsonify(rows)
 
@@ -260,23 +280,25 @@ def save_student():
     id_photo_path = current_id_photo_path
     id_photo_exists = current_id_photo_exists
     
+    # טיפול בצילום תעודת זהות (שמירה מקומית + העלאה ל-Cloudinary)
     if 'id_photo' in request.files:
         file = request.files['id_photo']
         if file and file.filename != '':
             filename = secure_filename(f"id_{data.get('tz')}_{file.filename}")
-            path = os.path.join(app.config['UPLOAD_FOLDER'], 'id_photos', filename)
-            file.save(path)
-            id_photo_path = f"/uploads/id_photos/{filename}"
-            id_photo_exists = 1
+            uploaded_url = save_uploaded_file(file, 'id_photos', filename)
+            if uploaded_url:
+                id_photo_path = uploaded_url
+                id_photo_exists = 1
 
+    # טיפול בתמונת פרופיל (שמירה מקומית + העלאה ל-Cloudinary)
     avatar_path = current_avatar_path
     if 'avatar' in request.files:
         file = request.files['avatar']
         if file and file.filename != '':
             filename = secure_filename(f"avatar_{data.get('tz')}_{file.filename}")
-            path = os.path.join(app.config['UPLOAD_FOLDER'], 'avatars', filename)
-            file.save(path)
-            avatar_path = f"/uploads/avatars/{filename}"
+            uploaded_url = save_uploaded_file(file, 'avatars', filename)
+            if uploaded_url:
+                avatar_path = uploaded_url
 
     phone = data.get('phone', '').strip()
     if phone != "" and not phone.startswith('0'): phone = "0" + phone
