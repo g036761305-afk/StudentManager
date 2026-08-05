@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import urllib.request
+import ssl
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, session, redirect, url_for
 import pandas as pd
 from werkzeug.utils import secure_filename
@@ -29,6 +30,9 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'id_photos'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'avatars'), exist_ok=True)
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'batch_photos'), exist_ok=True)
+
+# הגדרת SSL עוקף אימות עבור הורדות מקומיות בסביבת סינון
+ssl_context = ssl._create_unverified_context()
 
 # הגדרת Cloudinary
 cloudinary.config(
@@ -89,7 +93,10 @@ def download_file_if_missing(url, folder_name):
     local_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_name, filename)
     if not os.path.exists(local_path):
         try:
-            urllib.request.urlretrieve(url, local_path)
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, context=ssl_context) as response, open(local_path, 'wb') as out_file:
+                out_file.write(response.read())
+            print(f"Successfully downloaded: {filename}")
         except Exception as e:
             print(f"Error downloading {filename}: {e}")
     return filename
