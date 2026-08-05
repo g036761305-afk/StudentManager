@@ -55,7 +55,7 @@ def save_uploaded_file(file, folder_name, custom_filename):
         print(f"Error uploading to Cloudinary: {e}")
         return f"/uploads/{folder_name}/{custom_filename}"
 
-# טעינת הפונט העברי
+# טעינת הפונט
 FONT_PATH = os.path.join(os.path.dirname(__file__), 'arial.ttf')
 if os.path.exists(FONT_PATH):
     pdfmetrics.registerFont(TTFont('HebrewFont', FONT_PATH))
@@ -81,30 +81,18 @@ def execute_query(query, params=None):
             return [dict(row) for row in result.mappings()]
         return None
 
-def auto_download_missing_photos():
-    """פונקציה קבועה שמורידה אוטומטית ברקע תמונות חסרות מהענן לדיסק המקומי"""
-    try:
-        rows = execute_query("SELECT avatar_path, id_photo_path FROM students") or []
-        for row in rows:
-            # הורדת תמונות פרופיל
-            avatar_url = row.get('avatar_path')
-            if avatar_url and avatar_url.startswith('http'):
-                filename = os.path.basename(avatar_url)
-                local_path = os.path.join(app.config['UPLOAD_FOLDER'], 'avatars', filename)
-                if not os.path.exists(local_path):
-                    try: urllib.request.urlretrieve(avatar_url, local_path)
-                    except Exception: pass
-
-            # הורדת צילומי ת"ז
-            id_photo_url = row.get('id_photo_path')
-            if id_photo_url and id_photo_url.startswith('http'):
-                filename = os.path.basename(id_photo_url)
-                local_path = os.path.join(app.config['UPLOAD_FOLDER'], 'id_photos', filename)
-                if not os.path.exists(local_path):
-                    try: urllib.request.urlretrieve(id_photo_url, local_path)
-                    except Exception: pass
-    except Exception as e:
-        print(f"Auto sync bypass (offline mode or db not ready): {e}")
+def download_file_if_missing(url, folder_name):
+    """פונקציית עזר להורדה אוטומטית של קובץ מהענן אם הוא לא קיים מקומית"""
+    if not url or not url.startswith('http'):
+        return None
+    filename = os.path.basename(url)
+    local_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_name, filename)
+    if not os.path.exists(local_path):
+        try:
+            urllib.request.urlretrieve(url, local_path)
+        except Exception as e:
+            print(f"Error downloading {filename}: {e}")
+    return filename
 
 def int_to_gematria(num):
     gematria_map = [
@@ -183,9 +171,6 @@ def init_db():
             conn.execute(text("INSERT INTO users (username, password_hash) VALUES (:u, :p)"), {"u": "מנהל ראשי", "p": default_hash})
 
         conn.execute(text('CREATE TABLE IF NOT EXISTS document_templates (id SERIAL PRIMARY KEY, title TEXT UNIQUE, content TEXT)'))
-    
-    # הפעלת סנכרון תמונות אוטומטי בעת עליית המערכת
-    auto_download_missing_photos()
 
 @app.before_request
 def require_login():
@@ -281,19 +266,23 @@ def index():
 def get_students():
     rows = execute_query("SELECT * FROM students") or []
     
-    # בדיקה חכמה להצגת תמונות מקומיות במידה וקיים קובץ מקומי (עבור מצב אופליין)
+    # סנכרון והורדה אוטומטית של תמונות בעת טעינת הנתונים
     for row in rows:
-        if row.get('avatar_path') and row['avatar_path'].startswith('http'):
-            filename = os.path.basename(row['avatar_path'])
-            local_file = os.path.join(app.config['UPLOAD_FOLDER'], 'avatars', filename)
-            if os.path.exists(local_file):
-                row['avatar_path'] = f"/uploads/avatars/{filename}"
+        # טיפול בתמונת פרופיל
+        if row.get('avatar_path'):
+            filename = download_file_if_missing(row['avatar_path'], 'avatars')
+            if filename:
+                local_file = os.path.join(app.config['UPLOAD_FOLDER'], 'avatars', filename)
+                if os.path.exists(local_file):
+                    row['avatar_path'] = f"/uploads/avatars/{filename}"
 
-        if row.get('id_photo_path') and row['id_photo_path'].startswith('http'):
-            filename = os.path.basename(row['id_photo_path'])
-            local_file = os.path.join(app.config['UPLOAD_FOLDER'], 'id_photos', filename)
-            if os.path.exists(local_file):
-                row['id_photo_path'] = f"/uploads/id_photos/{filename}"
+        # טיפול בצילום ת"ז
+        if row.get('id_photo_path'):
+            filename = download_file_if_missing(row['id_photo_path'], 'id_photos')
+            if filename:
+                local_file = os.path.join(app.config['UPLOAD_FOLDER'], 'id_photos', filename)
+                if os.path.exists(local_file):
+                    row['id_photo_path'] = f"/uploads/id_photos/{filename}"
                 
     return jsonify(rows)
 
@@ -602,7 +591,6 @@ def export_excel():
     df.to_excel(output_path, index=False)
     return send_file(output_path, as_attachment=True)
 
-# אתחול בסיס הנתונים וביצוע סנכרון תמונות אוטומטי
 init_db()
 
 if __name__ == '__main__':
