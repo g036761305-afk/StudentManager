@@ -188,7 +188,6 @@
 
         <!-- פאנל מתקדם מורחב -->
         <div class="row g-3 mt-2 advanced-filters" id="advancedFiltersSection">
-            <!-- שדה חדש: סינון לפי סניף ירושלים -->
             <div class="col-md-3">
                 <label class="form-label fw-semibold text-primary">🏛️ סניף ירושלים</label>
                 <select id="jerusalemBranchFilter" class="form-select border-primary" onchange="filterStudents()">
@@ -198,7 +197,6 @@
                     <option value="2">למדו בעבר</option>
                 </select>
             </div>
-
             <div class="col-md-3">
                 <label class="form-label fw-semibold text-success">🔍 חיפוש חכם חופשי (AI)</label>
                 <input type="text" id="aiSearchInput" class="form-control border-success" placeholder='נסה: "פעילים", "עזבו", "נשוי", "היו בחיזוק"...' oninput="filterStudents()">
@@ -275,7 +273,6 @@
         <div class="table-responsive">
             <table class="table table-hover align-middle w-100" id="studentsTable">
                 <thead class="table-light">
-                    <!-- שורת כותרות הראשית עם לחצני מיון -->
                     <tr>
                         <th class="col-avatar">תמונה</th>
                         <th class="col-id sortable-header" onclick="sortTable('id', this)">מזהה <span class="sort-icon">↕</span></th>
@@ -303,7 +300,6 @@
                         <th class="col-id_doc sortable-header" onclick="sortTable('id_photo_exists', this)">מסמך ת"ז <span class="sort-icon">↕</span></th>
                         <th>פעולות</th>
                     </tr>
-                    <!-- שורת סינון בסגנון אקסל / אקסס לכל עמודה -->
                     <tr class="column-filter-row">
                         <th class="col-avatar"></th>
                         <th class="col-id"><div class="excel-filter-dropdown" data-col="id"></div></th>
@@ -349,7 +345,6 @@
                         <button type="button" class="btn btn-outline-primary" onclick="navigateStudent(-1)" title="תלמיד קודם (חץ ימינה)">▶ קודם</button>
                         <button type="button" class="btn btn-outline-primary" onclick="navigateStudent(1)" title="תלמיד הבא (חץ שמאלה)">הבא ◀</button>
                     </div>
-                    <span class="ms-3 text-success small d-none" id="auto_save_loader">🔄 נשמר אוטומטית...</span>
                 </div>
                 <button type="button" class="btn-close ms-0" data-bs-dismiss="modal"></button>
             </div>
@@ -361,7 +356,7 @@
 
                     <div class="d-flex align-items-center mb-4 p-3 bg-light rounded" style="position: relative;">
                         <div class="me-3 text-center">
-                            <img src="https://via.placeholder.com/100?text=אין+תמונה" id="avatar_preview_img" class="avatar-preview mb-2" title="ניתן להדביק כאן תמונה ישירות עם Ctrl+V"><br>
+                            <img src="https://via.placeholder.com/100?text=אין+תמונה" id="avatar_preview_img" class="avatar-preview mb-2"><br>
                             <label class="btn btn-sm btn-outline-secondary btn-sm mb-1">
                                 העלה תמונה
                                 <input type="file" id="avatar" name="avatar" accept="image/*" class="d-none" onchange="handleFileChange(this, 'avatar')">
@@ -564,7 +559,6 @@
     let exportModal;
     let currentlyOpenStudentId = null;
     
-    // מילון השומר את הערכים שנבחרו בכל עמודה
     let columnFiltersState = {};
     let currentSortColumn = '';
     let currentSortDirection = 'asc';
@@ -581,7 +575,6 @@
                 cb.addEventListener('change', updateColumnsVisibility);
             });
 
-            // סגירת תפריטי סינון Excel בלחיצה מחוץ לתפריט
             document.addEventListener('click', (e) => {
                 if (!e.target.closest('.excel-filter-dropdown')) {
                     document.querySelectorAll('.excel-filter-dropdown').forEach(d => d.classList.remove('open'));
@@ -637,14 +630,12 @@
         select.value = currentSelection;
     }
 
-    // בונה באופן דינמי את תפריטי הבחירה (Checkboxes) לכל עמודה מתוך הנתונים הקיימים במאגר
     function buildExcelColumnFilters() {
         const dropdowns = document.querySelectorAll('.excel-filter-dropdown');
         dropdowns.forEach(dd => {
             const colKey = dd.getAttribute('data-col');
             if (!colKey) return;
 
-            // חילוץ כל הערים/שמות/מחזורים הקיימים בעמודה זו
             let uniqueVals = [...new Set(allStudents.map(s => {
                 if (colKey === 'id_photo_exists') {
                     return (s.id_photo_exists === 1 || s.id_photo_path) ? 'קיים V' : 'לא הועלה';
@@ -674,7 +665,6 @@
                 </div>
             `;
 
-            // מציב מצב נבחר התחלתי
             columnFiltersState[colKey] = uniqueVals;
         });
     }
@@ -772,6 +762,79 @@
         });
     }
 
+    function toggleIdentificationFields() {
+        const isPassport = document.getElementById('is_passport').value === "1";
+        const label = document.getElementById('ident_label');
+        if (label) label.innerText = isPassport ? "מספר דרכון" : "תעודת זהות";
+        document.querySelectorAll('.passport-only').forEach(el => {
+            if (isPassport) el.classList.remove('d-none');
+            else el.classList.add('d-none');
+        });
+    }
+
+    function handleFileChange(input, type) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                if (type === 'avatar') {
+                    document.getElementById('avatar_preview_img').src = e.target.result;
+                } else if (type === 'id_photo') {
+                    const badge = document.getElementById('id_photo_status_badge');
+                    if (badge) {
+                        badge.innerText = "נבחר קובץ V";
+                        badge.className = "input-group-text bg-warning text-dark";
+                    }
+                }
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    function removeCurrentAvatar() {
+        document.getElementById('avatar_path_val').value = '';
+        document.getElementById('avatar_preview_img').src = "https://via.placeholder.com/100?text=אין+תמונה";
+        document.getElementById('avatar_actions_container').classList.add('d-none');
+        document.getElementById('avatar').value = '';
+    }
+
+    function removeCurrentIdPhoto() {
+        document.getElementById('id_photo_path_val').value = '';
+        const badge = document.getElementById('id_photo_status_badge');
+        if (badge) {
+            badge.innerText = "לא הועלה קובץ";
+            badge.className = "input-group-text";
+        }
+        document.getElementById('view_file_link_container').classList.add('d-none');
+        document.getElementById('delete_id_photo_btn').classList.add('d-none');
+        document.getElementById('id_photo').value = '';
+    }
+
+    function navigateStudent(direction) {
+        if (!currentlyOpenStudentId || filteredStudents.length === 0) return;
+        const currentIndex = filteredStudents.findIndex(s => s.id === currentlyOpenStudentId);
+        if (currentIndex === -1) return;
+        let newIndex = currentIndex + direction;
+        if (newIndex < 0) newIndex = filteredStudents.length - 1;
+        if (newIndex >= filteredStudents.length) newIndex = 0;
+        openEditModal(filteredStudents[newIndex].id);
+    }
+
+    async function deleteCurrentStudent() {
+        if (!currentlyOpenStudentId) return;
+        if (!confirm("האם אתה בטוח שברצונך למחוק תלמיד זה?")) return;
+        try {
+            const res = await fetch(`/api/students/delete/${currentlyOpenStudentId}`, { method: 'DELETE' });
+            if (res.ok) {
+                studentModal.hide();
+                loadStudents();
+            } else {
+                alert("שגיאה במחיקת התלמיד");
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
     function filterStudents() {
         const searchInput = document.getElementById('searchInput');
         const searchVal = searchInput ? searchInput.value.toLowerCase() : '';
@@ -825,7 +888,6 @@
                 }
             }
 
-            // סינון לפי שדה סניף ירושלים החדש
             let matchJlemBranch = true;
             if (jlemBranchVal !== "") {
                 matchJlemBranch = (s.is_jerusalem_branch == jlemBranchVal);
@@ -854,7 +916,6 @@
             else if (missingDocsVal === 'no_avatar') matchMissingDocs = (!s.avatar_path);
             else if (missingDocsVal === 'has_avatar') matchMissingDocs = (!!s.avatar_path);
 
-            // בדיקת פילטרים בסגנון אקסל לכל עמודה
             let matchExcelColumnFilters = true;
             for (let [colKey, allowedValues] of Object.entries(columnFiltersState)) {
                 let cellVal = '';
@@ -971,6 +1032,7 @@
         document.getElementById('first_name').value = s.first_name || '';
         document.getElementById('tz').value = s.tz || '';
         document.getElementById('is_passport').value = s.is_passport || "0";
+        toggleIdentificationFields();
         document.getElementById('passport_country').value = s.passport_country || '';
         document.getElementById('passport_expiry').value = s.passport_expiry || '';
         document.getElementById('status').value = s.status || '';
@@ -1029,13 +1091,29 @@
     }
 
     async function saveStudent() {
+        const formEl = document.getElementById('studentForm');
+        const formData = new FormData(formEl);
+
         const phoneInput = document.getElementById('phone');
         if (phoneInput && phoneInput.value.trim() !== "" && !phoneInput.value.trim().startsWith('0')) {
             phoneInput.value = "0" + phoneInput.value.trim();
+            formData.set('phone', phoneInput.value);
         }
-        await fetch('/api/students/save', { method: 'POST', body: new FormData(document.getElementById('studentForm')) });
-        loadStudents();
-        studentModal.hide();
+
+        try {
+            const res = await fetch('/api/students/save', {
+                method: 'POST',
+                body: formData
+            });
+            if (res.ok) {
+                loadStudents();
+                studentModal.hide();
+            } else {
+                alert("שגיאה בשמירת התלמיד והקבצים");
+            }
+        } catch (e) {
+            console.error("Error saving student:", e);
+        }
     }
 
     function exportToExcel() {
