@@ -11,10 +11,9 @@ from sqlalchemy import text, inspect
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-change-this'
 
-# --- הגדרת מסד הנתונים (הפרדה בין מקומי לענן) ---
-database_url = os.environ.get('DATABASE_URL')
-
-if database_url:
+# --- הגדרת מסד הנתונים ---
+if os.environ.get('RENDER') and os.environ.get('DATABASE_URL'):
+    database_url = os.environ.get('DATABASE_URL')
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
@@ -31,14 +30,16 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- מודלים ---
+# --- מודלים המחוברים לטבלאות המקוריות ---
 
 class User(UserMixin, db.Model):
+    __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
 
 class Student(db.Model):
+    __tablename__ = 'students'
     id = db.Column(db.Integer, primary_key=True)
     first_name = db.Column(db.String(100))
     last_name = db.Column(db.String(100))
@@ -71,6 +72,7 @@ class Student(db.Model):
     id_photo_exists = db.Column(db.Integer, default=0)
 
 class Template(db.Model):
+    __tablename__ = 'document_templates'
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100))
     content = db.Column(db.Text)
@@ -79,15 +81,15 @@ class Template(db.Model):
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
-# --- מנגנון איחוי אוטומטי למסד הנתונים הקיים ---
+# --- מנגנון איחוי עמודות למסד הנתונים הקיים ---
 
 def db_auto_migrate():
     try:
         inspector = inspect(db.engine)
-        if 'student' not in inspector.get_table_names():
+        if 'students' not in inspector.get_table_names():
             return
         
-        existing_columns = [col['name'] for col in inspector.get_columns('student')]
+        existing_columns = [col['name'] for col in inspector.get_columns('students')]
         
         required_columns = {
             'is_passport': 'INTEGER DEFAULT 0',
@@ -122,13 +124,13 @@ def db_auto_migrate():
             for col_name, col_type in required_columns.items():
                 if col_name not in existing_columns:
                     try:
-                        conn.execute(text(f"ALTER TABLE student ADD COLUMN {col_name} {col_type}"))
+                        conn.execute(text(f"ALTER TABLE students ADD COLUMN {col_name} {col_type}"))
                     except Exception as ex:
                         print(f"Col {col_name} alter note: {ex}")
     except Exception as e:
         print(f"Migration error: {e}")
 
-# --- נתיבי דפים והתחברות ---
+# --- נתיבים (API) ---
 
 @app.route('/')
 @login_required
@@ -152,8 +154,6 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
-
-# --- נתיבי תלמידים (Students API) ---
 
 @app.route('/api/students', methods=['GET'])
 @login_required
@@ -265,8 +265,6 @@ def delete_student(student_id):
         db.session.commit()
     return jsonify({'status': 'success'})
 
-# --- נתיבי תבניות אישורים (Templates API) ---
-
 @app.route('/api/templates', methods=['GET'])
 @login_required
 def get_templates():
@@ -288,8 +286,6 @@ def save_template():
     template.content = content
     db.session.commit()
     return jsonify({'status': 'success'})
-
-# --- נתיבי ייצוא וייבוא אקסל ---
 
 @app.route('/api/export', methods=['GET', 'POST'])
 @login_required
@@ -340,8 +336,6 @@ def download_template():
     output.seek(0)
     return send_file(output, download_name="import_template.xlsx", as_attachment=True)
 
-# --- נתיבי ניהול משתמשים ---
-
 @app.route('/api/users', methods=['GET'])
 @login_required
 def get_users():
@@ -382,7 +376,7 @@ def change_password():
         return jsonify({'status': 'success'})
     return jsonify({'error': 'Wrong old password'}), 400
 
-# --- אתחול בסיס הנתונים, מיגראציה ומשתמשים ---
+# --- אתחול בסיס הנתונים ---
 
 with app.app_context():
     db.create_all()
