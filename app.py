@@ -575,42 +575,77 @@ def print_student_certificate(student_id, template_id):
         <meta charset="UTF-8">
         <title>{template.title}</title>
         <style>
+            @page {{
+                size: A4;
+                margin: 0;
+            }}
             @media print {{
                 body {{
-                    -webkit-print-color-adjust: exact;
-                    print-color-adjust: exact;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }}
             }}
             body {{
                 font-family: Arial, sans-serif;
-                padding: 40px;
-                line-height: 1.8;
-                max-width: 800px;
-                margin: auto;
+                margin: 0;
+                padding: 0;
+                width: 210mm;
+                height: 297mm;
+                background-image: url('/static/letterhead.png');
+                background-size: cover;
+                background-position: center;
+                background-repeat: no-repeat;
+                box-sizing: border-box;
+                position: relative;
+            }}
+            .cert-container {{
+                padding: 160px 80px 80px 80px;
             }}
             .cert-title {{
                 text-align: center;
-                margin-bottom: 30px;
-                font-size: 28px;
+                margin-bottom: 40px;
+                font-size: 26px;
                 font-weight: bold;
+                text-decoration: underline;
             }}
             .cert-body {{
                 font-size: 18px;
+                line-height: 2;
                 white-space: pre-line;
             }}
             .cert-footer {{
-                margin-top: 50px;
-                text-align: left;
-                font-size: 16px;
+                margin-top: 60px;
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-end;
+            }}
+            .signature-box {{
+                text-align: center;
+            }}
+            .signature-img {{
+                max-width: 150px;
+                height: auto;
+                display: block;
+                margin-top: 10px;
             }}
         </style>
     </head>
     <body>
-        <div class="cert-title">{template.title}</div>
-        <div class="cert-body">{content}</div>
-        <div class="cert-footer">
-            <p>תאריך: {datetime.now().strftime('%d/%m/%Y')}</p>
+        <div class="cert-container">
+            <div class="cert-title">{template.title}</div>
+            <div class="cert-body">{content}</div>
+            
+            <div class="cert-footer">
+                <div>
+                    <p><strong>תאריך הנפקה:</strong> {datetime.now().strftime('%d/%m/%Y')}</p>
+                </div>
+                <div class="signature-box">
+                    <p><strong>חתימה וחותמת:</strong></p>
+                    <img src="/static/signature.png" class="signature-img" alt="חותמת וחתימה" onerror="this.style.display='none';">
+                </div>
+            </div>
         </div>
+
         <script>
             window.onload = function() {{ window.print(); }}
         </script>
