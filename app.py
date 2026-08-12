@@ -648,7 +648,6 @@ def print_student_certificate(student_id, template_id):
             except Exception as ex:
                 print("Font registration error:", ex)
 
-    # ניסיון טעינת גופן מודגש ייעודי
     bold_font_paths = [
         os.path.join(app.root_path, 'static', 'Arial-Bold.ttf'),
         'C:\\Windows\\Fonts\\arialbd.ttf',
@@ -674,39 +673,40 @@ def print_student_certificate(student_id, template_id):
         else:
             c.drawRightString(x, y, txt)
 
-    # 3. מילת בס"ד בצד ימין למעלה
-    draw_text(width - 60, height - 150, 'בס"ד', font_size=11, align='right')
+    # 3. מילת בס"ד בצד ימין למעלה (הונמך ל-height - 170)
+    draw_text(width - 60, height - 170, 'בס"ד', font_size=11, align='right')
 
-    # 4. תאריכים בצד שמאל למעלה (לועזי + עברי מתחתיו)
+    # 4. תאריכים בצד שמאל למעלה (הונמך ל-height - 170 ולועזי + עברי)
     date_str = datetime.now().strftime('%d/%m/%Y')
     hebrew_date_str = ''
     if HAS_PYLUACH:
         try:
-            hebrew_date_str = dates.HebrewDate.today().hebrew_date_string(hebrew=True)
-        except Exception:
-            hebrew_date_str = ''
+            h_obj = dates.HebrewDate.today()
+            hebrew_date_str = h_obj.hebrew_date_string(hebrew=True)
+        except Exception as ex:
+            print("Hebrew date calculation error:", ex)
 
-    draw_text(110, height - 150, f'תאריך: {date_str}', font_size=11, align='left')
+    draw_text(110, height - 170, f'תאריך: {date_str}', font_size=11, align='left')
     if hebrew_date_str:
-        draw_text(110, height - 165, f'תאריך עברי: {hebrew_date_str}', font_size=11, align='left')
+        draw_text(110, height - 188, f'תאריך עברי: {hebrew_date_str}', font_size=11, align='left')
 
     # אם אין בלאנק ברקע, נייצר כותרות ברירת מחדל
     if not has_letterhead:
         draw_text(width / 2, height - 50, 'ע.ר. 580107613', font_size=10, align='center')
 
-    # 5. כותרת האישור (מוגדלת ומודגשת)
-    draw_text(width / 2, height - 230, template.title or 'אישור תלמיד', font_size=24, align='center', is_bold=True)
+    # 5. כותרת האישור (מוגדלת ל-24pt, מודגשת והורדה ל-height - 260)
+    draw_text(width / 2, height - 260, template.title or 'אישור תלמיד', font_size=24, align='center', is_bold=True)
 
-    # 6. גוף האישור (פונט מוגדל ל-15pt ושוליים מותאמים)
-    y_pos = height - 280
+    # 6. גוף האישור (ממורכז במרכז הדף, פונט 15pt והורד ל-height - 320)
+    y_pos = height - 320
     for line in content.split('\n'):
         line_clean = line.strip()
         if line_clean:
-            draw_text(width - 100, y_pos, line_clean, font_size=15, align='right')
-            y_pos -= 30
+            draw_text(width / 2, y_pos, line_clean, font_size=15, align='center')
+            y_pos -= 32
 
-    # 7. חתימה וחותמת בצד שמאל
-    y_footer = max(y_pos - 40, 220)
+    # 7. חתימה וחותמת בצד שמאל בתחתית
+    y_footer = max(y_pos - 40, 200)
     draw_text(180, y_footer, 'בברכה,', font_size=14, align='center')
     draw_text(180, y_footer - 22, 'גרשון אלינסון 056586829', font_size=13, align='center')
 
