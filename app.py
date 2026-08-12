@@ -485,6 +485,31 @@ def delete_student(student_id):
 
 # --- ניהול והנפקת אישורים / תבניות ---
 
+def get_template_replacements(student):
+    return {
+        '{first_name}': student.first_name or '',
+        '{שם_פרטי}': student.first_name or '',
+        '{שם פרטי}': student.first_name or '',
+        '{last_name}': student.last_name or '',
+        '{שם_משפחה}': student.last_name or '',
+        '{שם משפחה}': student.last_name or '',
+        '{tz}': student.tz or '',
+        '{תעודת_זהות}': student.tz or '',
+        '{תעודת זהות}': student.tz or '',
+        '{זיהוי}': student.tz or '',
+        '{סוג_זיהוי}': 'דרכון' if student.is_passport == 1 else 'ת"ז',
+        '{סוג זיהוי}': 'דרכון' if student.is_passport == 1 else 'ת"ז',
+        '{city}': student.city or '',
+        '{עיר}': student.city or '',
+        '{address}': student.address or '',
+        '{כתובת}': student.address or '',
+        '{phone}': student.phone or '',
+        '{טלפון}': student.phone or '',
+        '{cycle}': student.cycle or '',
+        '{מחזור}': student.cycle or '',
+        '{תאריך}': datetime.now().strftime('%d/%m/%Y')
+    }
+
 @app.route('/api/templates', methods=['GET'])
 @login_required
 def get_templates():
@@ -521,21 +546,14 @@ def generate_document():
         return jsonify({'error': 'תלמיד או תבנית לא נמצאו'}), 404
 
     content = template.content or ''
-    content = content.replace('{first_name}', student.first_name or '')
-    content = content.replace('{last_name}', student.last_name or '')
-    content = content.replace('{tz}', student.tz or '')
-    content = content.replace('{city}', student.city or '')
-    content = content.replace('{address}', student.address or '')
-    content = content.replace('{phone}', student.phone or '')
-    content = content.replace('{cycle}', student.cycle or '')
+    for key, val in get_template_replacements(student).items():
+        content = content.replace(key, str(val))
 
     return jsonify({
         'status': 'success',
         'title': template.title,
         'content': content
     })
-
-# --- נתיב להדפסת אישור לתלמיד (פתרון שגיאת 404) ---
 
 @app.route('/api/students/<int:student_id>/print/<int:template_id>', methods=['GET'])
 @login_required
@@ -547,13 +565,8 @@ def print_student_certificate(student_id, template_id):
         return "תלמיד או תבנית לא נמצאו", 404
 
     content = template.content or ''
-    content = content.replace('{first_name}', student.first_name or '')
-    content = content.replace('{last_name}', student.last_name or '')
-    content = content.replace('{tz}', student.tz or '')
-    content = content.replace('{city}', student.city or '')
-    content = content.replace('{address}', student.address or '')
-    content = content.replace('{phone}', student.phone or '')
-    content = content.replace('{cycle}', student.cycle or '')
+    for key, val in get_template_replacements(student).items():
+        content = content.replace(key, str(val))
 
     return f"""
     <!DOCTYPE html>
@@ -561,14 +574,42 @@ def print_student_certificate(student_id, template_id):
     <head>
         <meta charset="UTF-8">
         <title>{template.title}</title>
+        <style>
+            @media print {{
+                body {{
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                }}
+            }}
+            body {{
+                font-family: Arial, sans-serif;
+                padding: 40px;
+                line-height: 1.8;
+                max-width: 800px;
+                margin: auto;
+            }}
+            .cert-title {{
+                text-align: center;
+                margin-bottom: 30px;
+                font-size: 28px;
+                font-weight: bold;
+            }}
+            .cert-body {{
+                font-size: 18px;
+                white-space: pre-line;
+            }}
+            .cert-footer {{
+                margin-top: 50px;
+                text-align: left;
+                font-size: 16px;
+            }}
+        </style>
     </head>
     <body>
-        <div style="font-family: Arial, sans-serif; padding: 40px; line-height: 1.8; max-width: 800px; margin: auto;">
-            <h1 style="text-align: center; margin-bottom: 30px;">{template.title}</h1>
-            <div style="font-size: 18px;">{content}</div>
-            <div style="margin-top: 50px; text-align: left;">
-                <p>תאריך: {datetime.now().strftime('%d/%m/%Y')}</p>
-            </div>
+        <div class="cert-title">{template.title}</div>
+        <div class="cert-body">{content}</div>
+        <div class="cert-footer">
+            <p>תאריך: {datetime.now().strftime('%d/%m/%Y')}</p>
         </div>
         <script>
             window.onload = function() {{ window.print(); }}
