@@ -1,24 +1,40 @@
 import os
 import io
+import requests
+import threading
+from datetime import datetime
 import pandas as pd
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy import text, inspect
 
+try:
+    import cloudinary
+    import cloudinary.uploader
+    HAS_CLOUDINARY = True
+except ImportError:
+    HAS_CLOUDINARY = False
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-change-this'
 
-# --- הגדרת מסד הנתונים ---
+if HAS_CLOUDINARY and os.environ.get('CLOUDINARY_URL'):
+    cloudinary.config(cloudinary_url=os.environ.get('CLOUDINARY_URL'))
+
+CLOUD_RENDER_URL = os.environ.get('CLOUD_RENDER_URL', 'https://student-manager.onrender.com')
+
 if os.environ.get('RENDER') and os.environ.get('DATABASE_URL'):
     database_url = os.environ.get('DATABASE_URL')
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    IS_LOCAL = False
 else:
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///students.db'
+    IS_LOCAL = True
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -30,7 +46,7 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- מודלים המחוברים לטבלאות המקוריות ---
+# --- מודלים ---
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
@@ -67,9 +83,11 @@ class Student(db.Model):
     entry_date = db.Column(db.String(50))
     leave_date = db.Column(db.String(50))
     wedding_date = db.Column(db.String(50))
-    avatar_path = db.Column(db.String(300))
-    id_photo_path = db.Column(db.String(300))
+    avatar_path = db.Column(db.String(500))
+    id_photo_path = db.Column(db.String(500))
     id_photo_exists = db.Column(db.Integer, default=0)
+    updated_at = db.Column(db.String(50), default=lambda: datetime.now().isoformat())
+    is_synced = db.Column(db.Integer, default=1)
 
 class Template(db.Model):
     __tablename__ = 'document_templates'
@@ -80,8 +98,6 @@ class Template(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
-
-# --- מנגנון איחוי עמודות למסד הנתונים הקיים ---
 
 def db_auto_migrate():
     try:
@@ -115,9 +131,11 @@ def db_auto_migrate():
             'entry_date': 'VARCHAR(50)',
             'leave_date': 'VARCHAR(50)',
             'wedding_date': 'VARCHAR(50)',
-            'avatar_path': 'VARCHAR(300)',
-            'id_photo_path': 'VARCHAR(300)',
-            'id_photo_exists': 'INTEGER DEFAULT 0'
+            'avatar_path': 'VARCHAR(500)',
+            'id_photo_path': 'VARCHAR(500)',
+            'id_photo_exists': 'INTEGER DEFAULT 0',
+            'updated_at': 'VARCHAR(50)',
+            'is_synced': 'INTEGER DEFAULT 1'
         }
         
         with db.engine.begin() as conn:
@@ -130,11 +148,94 @@ def db_auto_migrate():
     except Exception as e:
         print(f"Migration error: {e}")
 
-# --- נתיבים (API) ---
+def push_unsynced_to_cloud():
+    if not IS_LOCAL:
+        return
+    try:
+        with app.app_context():
+            unsynced_students = Student.query.filter_by(is_synced=0).all()
+            if not unsynced_students:
+                return
+
+            payload = []
+            for s in unsynced_students:
+                payload.append({
+                    'id': s.id,
+                    'first_name': s.first_name,
+                    'last_name': s.last_name,
+                    'tz': s.tz,
+                    'is_passport': s.is_passport,
+                    'passport_country': s.passport_country,
+                    'passport_expiry': s.passport_expiry,
+                    'status': s.status,
+                    'birth_date_gregorian': s.birth_date_gregorian,
+                    'birth_date_hebrew': s.birth_date_hebrew,
+                    'city': s.city,
+                    'neighborhood': s.neighborhood,
+                    'address': s.address,
+                    'phone': s.phone,
+                    'additional_phone': s.additional_phone,
+                    'father_name': s.father_name,
+                    'mother_name': s.mother_name,
+                    'mother_maiden_name': s.mother_maiden_name,
+                    'previous_institution': s.previous_institution,
+                    'cycle': s.cycle,
+                    'voicemail': s.voicemail,
+                    'telephony_code': s.telephony_code,
+                    'strengthening': s.strengthening,
+                    'is_jerusalem_branch': s.is_jerusalem_branch,
+                    'entry_date': s.entry_date,
+                    'leave_date': s.leave_date,
+                    'wedding_date': s.wedding_date,
+                    'avatar_path': s.avatar_path,
+                    'id_photo_path': s.id_photo_path,
+                    'id_photo_exists': s.id_photo_exists,
+                    'updated_at': s.updated_at
+                })
+
+            res = requests.post(f"{CLOUD_RENDER_URL}/api/sync-batch", json=payload, timeout=5)
+            if res.status_code == 200:
+                for s in unsynced_students:
+                    s.is_synced = 1
+                db.session.commit()
+    except Exception as e:
+        pass
+
+def trigger_background_sync():
+    threading.Thread(target=push_unsynced_to_cloud, daemon=True).start()
+
+# --- נתיבים להגשת תמונות ---
+
+@app.route('/uploads/avatars/<path:filename>')
+def serve_avatar(filename):
+    directories = [
+        os.path.join(app.root_path, 'static', 'uploads'),
+        os.path.join(app.root_path, 'uploads', 'avatars'),
+        os.path.join(app.root_path, 'uploads')
+    ]
+    for directory in directories:
+        if os.path.exists(os.path.join(directory, filename)):
+            return send_from_directory(directory, filename)
+    return send_from_directory(os.path.join(app.root_path, 'static', 'uploads'), filename)
+
+@app.route('/uploads/<path:filename>')
+def serve_uploads(filename):
+    directories = [
+        os.path.join(app.root_path, 'static', 'uploads'),
+        os.path.join(app.root_path, 'uploads')
+    ]
+    for directory in directories:
+        if os.path.exists(os.path.join(directory, filename)):
+            return send_from_directory(directory, filename)
+    return send_from_directory(os.path.join(app.root_path, 'static', 'uploads'), filename)
+
+# --- נתיבי המערכת ---
 
 @app.route('/')
 @login_required
 def index():
+    if IS_LOCAL:
+        trigger_background_sync()
     return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -235,26 +336,141 @@ def save_student():
     student.entry_date = request.form.get('entry_date')
     student.leave_date = request.form.get('leave_date')
     student.wedding_date = request.form.get('wedding_date')
+    student.updated_at = datetime.now().isoformat()
+    student.is_synced = 0
 
     if 'avatar' in request.files:
         avatar = request.files['avatar']
         if avatar and avatar.filename != '':
             fname = secure_filename(avatar.filename)
-            path = os.path.join(app.config['UPLOAD_FOLDER'], f"avatar_{fname}")
-            avatar.save(path)
+            local_path = os.path.join(app.config['UPLOAD_FOLDER'], f"avatar_{fname}")
+            avatar.save(local_path)
             student.avatar_path = f"/static/uploads/avatar_{fname}"
+
+            if HAS_CLOUDINARY and os.environ.get('CLOUDINARY_URL'):
+                try:
+                    upload_res = cloudinary.uploader.upload(local_path, folder="student_avatars")
+                    student.avatar_path = upload_res.get('secure_url', student.avatar_path)
+                except Exception as ex:
+                    print("Cloudinary avatar upload skipped/failed:", ex)
 
     if 'id_photo' in request.files:
         id_photo = request.files['id_photo']
         if id_photo and id_photo.filename != '':
             fname = secure_filename(id_photo.filename)
-            path = os.path.join(app.config['UPLOAD_FOLDER'], f"id_{fname}")
-            id_photo.save(path)
+            local_path = os.path.join(app.config['UPLOAD_FOLDER'], f"id_{fname}")
+            id_photo.save(local_path)
             student.id_photo_path = f"/static/uploads/id_{fname}"
             student.id_photo_exists = 1
 
+            if HAS_CLOUDINARY and os.environ.get('CLOUDINARY_URL'):
+                try:
+                    upload_res = cloudinary.uploader.upload(local_path, folder="student_id_photos")
+                    student.id_photo_path = upload_res.get('secure_url', student.id_photo_path)
+                except Exception as ex:
+                    print("Cloudinary ID photo upload skipped/failed:", ex)
+
     db.session.commit()
+
+    if IS_LOCAL:
+        trigger_background_sync()
+
     return jsonify({'status': 'success', 'id': student.id})
+
+# --- ייבוא אקסל ---
+
+@app.route('/api/import-excel', methods=['POST'])
+@login_required
+def import_excel():
+    file = request.files.get('file') or request.files.get('excel_file')
+    if not file or file.filename == '':
+        return jsonify({'error': 'לא נבחר קובץ'}), 400
+
+    try:
+        df = pd.read_excel(file)
+        added = 0
+        updated = 0
+
+        with db.session.no_autoflush:
+            for index, row in df.iterrows():
+                s_id = row.get('מזהה') or row.get('id')
+                tz = str(row.get('זיהוי') or row.get('תעודת זהות') or row.get('ת"ז') or '').strip()
+                if tz.endswith('.0'):
+                    tz = tz[:-2]
+
+                first_name = str(row.get('שם פרטי') or '').strip()
+                last_name = str(row.get('שם משפחה') or '').strip()
+                city = str(row.get('עיר') or '').strip()
+                address = str(row.get('כתובת') or '').strip()
+                phone = str(row.get('טלפון') or '').strip()
+                if phone.endswith('.0'):
+                    phone = phone[:-2]
+
+                cycle = str(row.get('מחזור') or '').strip()
+                status = str(row.get('סטטוס') or '').strip()
+
+                if not first_name and not last_name and not tz:
+                    continue
+
+                student = None
+                if s_id and str(s_id).isdigit():
+                    student = db.session.get(Student, int(s_id))
+
+                if not student and tz:
+                    student = Student.query.filter_by(tz=tz).first()
+
+                if not student:
+                    student = Student()
+                    db.session.add(student)
+                    added += 1
+                else:
+                    updated += 1
+
+                if first_name: student.first_name = first_name
+                if last_name: student.last_name = last_name
+                
+                if tz:
+                    existing_tz_owner = Student.query.filter(Student.tz == tz, Student.id != student.id).first()
+                    if not existing_tz_owner:
+                        student.tz = tz
+
+                if city: student.city = city
+                if address: student.address = address
+                if phone: student.phone = phone
+                if cycle: student.cycle = cycle
+                if status: student.status = status
+
+                student.updated_at = datetime.now().isoformat()
+                student.is_synced = 0
+
+        db.session.commit()
+
+        if IS_LOCAL:
+            trigger_background_sync()
+
+        return jsonify({'status': 'success', 'added': added, 'updated': updated})
+
+    except Exception as e:
+        db.session.rollback()
+        print("Import Excel Error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sync-batch', methods=['POST'])
+def sync_batch():
+    students_data = request.get_json() or []
+    for item in students_data:
+        s = db.session.get(Student, item.get('id'))
+        if not s:
+            s = Student(id=item.get('id'))
+            db.session.add(s)
+
+        for key, val in item.items():
+            if hasattr(s, key) and key not in ['id']:
+                setattr(s, key, val)
+        s.is_synced = 1
+
+    db.session.commit()
+    return jsonify({'status': 'success', 'synced_count': len(students_data)})
 
 @app.route('/api/students/delete/<int:student_id>', methods=['DELETE'])
 @login_required
@@ -263,7 +479,11 @@ def delete_student(student_id):
     if student:
         db.session.delete(student)
         db.session.commit()
+        if IS_LOCAL:
+            trigger_background_sync()
     return jsonify({'status': 'success'})
+
+# --- ניהול והנפקת אישורים / תבניות ---
 
 @app.route('/api/templates', methods=['GET'])
 @login_required
@@ -287,6 +507,36 @@ def save_template():
     db.session.commit()
     return jsonify({'status': 'success'})
 
+@app.route('/api/generate-document', methods=['POST'])
+@login_required
+def generate_document():
+    data = request.get_json() or {}
+    student_id = data.get('student_id')
+    template_id = data.get('template_id')
+
+    student = db.session.get(Student, int(student_id)) if student_id else None
+    template = db.session.get(Template, int(template_id)) if template_id else None
+
+    if not student or not template:
+        return jsonify({'error': 'תלמיד או תבנית לא נמצאו'}), 404
+
+    content = template.content or ''
+    content = content.replace('{first_name}', student.first_name or '')
+    content = content.replace('{last_name}', student.last_name or '')
+    content = content.replace('{tz}', student.tz or '')
+    content = content.replace('{city}', student.city or '')
+    content = content.replace('{address}', student.address or '')
+    content = content.replace('{phone}', student.phone or '')
+    content = content.replace('{cycle}', student.cycle or '')
+
+    return jsonify({
+        'status': 'success',
+        'title': template.title,
+        'content': content
+    })
+
+# --- ייצוא מלא לאקסל ---
+
 @app.route('/api/export', methods=['GET', 'POST'])
 @login_required
 def export_excel():
@@ -304,15 +554,34 @@ def export_excel():
     for s in students:
         data_list.append({
             'מזהה': s.id,
-            'שם משפחה': s.last_name,
             'שם פרטי': s.first_name,
+            'שם משפחה': s.last_name,
             'זיהוי': s.tz,
+            'האם דרכון': 'כן' if s.is_passport == 1 else 'לא',
+            'מדינת דרכון': s.passport_country,
+            'תוקף דרכון': s.passport_expiry,
             'סטטוס': s.status,
+            'תאריך לידה לועזי': s.birth_date_gregorian,
+            'תאריך לידה עברי': s.birth_date_hebrew,
             'עיר': s.city,
+            'שכונה': s.neighborhood,
             'כתובת': s.address,
             'טלפון': s.phone,
+            'טלפון נוסף': s.additional_phone,
+            'שם האב': s.father_name,
+            'שם האם': s.mother_name,
+            'שם משפחה קודם של האם': s.mother_maiden_name,
+            'מוסד קודם': s.previous_institution,
             'מחזור': s.cycle,
-            'סניף ירושלים': 'כן' if s.is_jerusalem_branch == 1 else ('למד בעבר' if s.is_jerusalem_branch == 2 else 'לא')
+            'תא קולי': s.voicemail,
+            'קוד טלפוניה': s.telephony_code,
+            'חיזוק': s.strengthening,
+            'סניף ירושלים': 'כן' if s.is_jerusalem_branch == 1 else ('למד בעבר' if s.is_jerusalem_branch == 2 else 'לא'),
+            'תאריך כניסה': s.entry_date,
+            'תאריך עזיבה': s.leave_date,
+            'תאריך חתונה': s.wedding_date,
+            'נתיב תמונת פרופיל': s.avatar_path,
+            'נתיב צילום ת"ז': s.id_photo_path
         })
 
     df = pd.DataFrame(data_list)
