@@ -601,18 +601,26 @@ def print_student_certificate(student_id, template_id):
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4  # 595.27 x 841.89 pt
 
-    # 1. בדיקת קיומה של תמונת בלאנק ברקע
-    letterhead_paths = [
-        os.path.join(app.root_path, 'static', 'letterhead.png'),
-        os.path.join(app.root_path, 'static', 'uploads', 'letterhead.png'),
-        os.path.join(app.root_path, 'letterhead.png')
+    # 1. חיפוש גמיש של תמונת נייר המכתבים (תמיכה באותיות גדולות/קטנות וסיומות שונות)
+    possible_letterhead_names = [
+        'letterhead.png', 'letterhead.PNG', 'Letterhead.png', 'Letterhead.PNG',
+        'letterhead.jpg', 'letterhead.JPG', 'letterhead.jpeg', 'Letterhead.jpeg'
     ]
-    has_letterhead = False
-    for lp in letterhead_paths:
-        if os.path.exists(lp):
-            c.drawImage(lp, 0, 0, width=width, height=height)
-            has_letterhead = True
+    
+    letterhead_found_path = None
+    for name in possible_letterhead_names:
+        for folder in [os.path.join(app.root_path, 'static'), os.path.join(app.root_path, 'static', 'uploads'), app.root_path]:
+            check_p = os.path.join(folder, name)
+            if os.path.exists(check_p):
+                letterhead_found_path = check_p
+                break
+        if letterhead_found_path:
             break
+
+    has_letterhead = False
+    if letterhead_found_path:
+        c.drawImage(letterhead_found_path, 0, 0, width=width, height=height)
+        has_letterhead = True
 
     # 2. טעינת גופן תואם עברית
     font_name = 'Helvetica'
@@ -654,7 +662,7 @@ def print_student_certificate(student_id, template_id):
     # 4. כותרת האישור
     draw_text(width / 2, height - 230, template.title or 'אישור תלמיד', font_size=20, align='center')
 
-    # 5. גוף האישור (מיושר לימין עם שוליים מותאמים מראש)
+    # 5. גוף האישור (מיושר לימין עם שוליים מותאמים)
     y_pos = height - 280
     for line in content.split('\n'):
         line_clean = line.strip()
@@ -667,16 +675,22 @@ def print_student_certificate(student_id, template_id):
     draw_text(width - 120, y_footer, 'בברכה,', font_size=13, align='right')
     draw_text(width - 120, y_footer - 20, 'הנהלת המוסד', font_size=12, align='right')
 
-    stamp_paths = [
-        os.path.join(app.root_path, 'static', 'stamp.png'),
-        os.path.join(app.root_path, 'static', 'signature.png'),
-        os.path.join(app.root_path, 'static', 'uploads', 'stamp.png'),
-        os.path.join(app.root_path, 'static', 'uploads', 'signature.png')
+    possible_stamp_names = [
+        'stamp.png', 'stamp.PNG', 'signature.png', 'signature.PNG',
+        'stamp.jpg', 'signature.jpg', 'Stamp.png', 'Signature.png'
     ]
-    for sp in stamp_paths:
-        if os.path.exists(sp):
-            c.drawImage(sp, width - 240, y_footer - 90, width=130, height=65, mask='auto')
+    stamp_found_path = None
+    for name in possible_stamp_names:
+        for folder in [os.path.join(app.root_path, 'static'), os.path.join(app.root_path, 'static', 'uploads'), app.root_path]:
+            check_p = os.path.join(folder, name)
+            if os.path.exists(check_p):
+                stamp_found_path = check_p
+                break
+        if stamp_found_path:
             break
+
+    if stamp_found_path:
+        c.drawImage(stamp_found_path, width - 240, y_footer - 90, width=130, height=65, mask='auto')
 
     c.showPage()
     c.save()
