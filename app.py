@@ -642,28 +642,30 @@ def print_student_certificate(student_id, template_id):
         else:
             c.drawRightString(x, y, txt)
 
-    # 3. כותרת עליונה (מיוצרת רק במידה ואין תמונת בלאנק מובנית)
+    # 3. תאריך בודד בצד שמאל מתחת ללוגו
     date_str = datetime.now().strftime('%d/%m/%Y')
+    draw_text(110, height - 165, f'תאריך: {date_str}', font_size=11, align='left')
+
+    # אם אין בלאנק ברקע, נייצר כותרות ברירת מחדל
     if not has_letterhead:
         draw_text(width - 50, height - 50, 'בס"ד', font_size=11, align='right')
         draw_text(width / 2, height - 50, 'ע.ר. 580107613', font_size=10, align='center')
-        draw_text(50, height - 50, f'תאריך: {date_str}', font_size=10, align='left')
 
     # 4. כותרת האישור
-    draw_text(width / 2, height - 130, template.title or 'אישור תלמיד', font_size=20, align='center')
+    draw_text(width / 2, height - 230, template.title or 'אישור תלמיד', font_size=20, align='center')
 
-    # 5. גוף האישור
-    y_pos = height - 180
+    # 5. גוף האישור (מיושר לימין עם שוליים מותאמים מראש)
+    y_pos = height - 280
     for line in content.split('\n'):
         line_clean = line.strip()
         if line_clean:
-            draw_text(width - 60, y_pos, line_clean, font_size=13, align='right')
+            draw_text(width - 100, y_pos, line_clean, font_size=13, align='right')
             y_pos -= 26
 
-    # 6. חתימה וחותמת (ממוקמות עם רווח בטיחות למניעת חפיפת טקסט)
-    y_footer = max(y_pos - 40, 170)
-    draw_text(width - 60, y_footer, 'בברכה,', font_size=13, align='right')
-    draw_text(width - 60, y_footer - 22, 'הנהלת המוסד', font_size=12, align='right')
+    # 6. חתימה וחותמת בתחתית
+    y_footer = max(y_pos - 40, 220)
+    draw_text(width - 120, y_footer, 'בברכה,', font_size=13, align='right')
+    draw_text(width - 120, y_footer - 20, 'הנהלת המוסד', font_size=12, align='right')
 
     stamp_paths = [
         os.path.join(app.root_path, 'static', 'stamp.png'),
@@ -673,7 +675,7 @@ def print_student_certificate(student_id, template_id):
     ]
     for sp in stamp_paths:
         if os.path.exists(sp):
-            c.drawImage(sp, width - 200, y_footer - 90, width=130, height=65, mask='auto')
+            c.drawImage(sp, width - 240, y_footer - 90, width=130, height=65, mask='auto')
             break
 
     c.showPage()
