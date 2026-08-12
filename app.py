@@ -12,7 +12,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy import text, inspect
 
-# יבוא ReportLab ו-BiDi לטיפול מושלם בעברית ומספרים
+# יבוא ReportLab ו-BiDi להפקת קובצי PDF תקינים בעברית
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
@@ -601,15 +601,24 @@ def print_student_certificate(student_id, template_id):
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4  # 595.27 x 841.89 pt
 
-    # 1. הטמעת תמונת הרקע (בלאנק/נייר מכתבים) במידה וקיימת
-    letterhead_path = os.path.join(app.root_path, 'static', 'letterhead.png')
-    if os.path.exists(letterhead_path):
-        c.drawImage(letterhead_path, 0, 0, width=width, height=height)
+    # 1. בדיקת קיומה של תמונת בלאנק ברקע
+    letterhead_paths = [
+        os.path.join(app.root_path, 'static', 'letterhead.png'),
+        os.path.join(app.root_path, 'static', 'uploads', 'letterhead.png'),
+        os.path.join(app.root_path, 'letterhead.png')
+    ]
+    has_letterhead = False
+    for lp in letterhead_paths:
+        if os.path.exists(lp):
+            c.drawImage(lp, 0, 0, width=width, height=height)
+            has_letterhead = True
+            break
 
-    # 2. רישום גופן בעברית
+    # 2. טעינת גופן תואם עברית
     font_name = 'Helvetica'
     font_paths = [
         os.path.join(app.root_path, 'static', 'Arial.ttf'),
+        os.path.join(app.root_path, 'static', 'arial.ttf'),
         'C:\\Windows\\Fonts\\arial.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/freefont/FreeSans.ttf'
@@ -620,8 +629,8 @@ def print_student_certificate(student_id, template_id):
                 pdfmetrics.registerFont(TTFont('HebrewFont', fp))
                 font_name = 'HebrewFont'
                 break
-            except Exception:
-                pass
+            except Exception as ex:
+                print("Font registration error:", ex)
 
     def draw_text(x, y, text_str, font_size=12, align='right'):
         c.setFont(font_name, font_size)
@@ -633,34 +642,39 @@ def print_student_certificate(student_id, template_id):
         else:
             c.drawRightString(x, y, txt)
 
-    # 3. כותרת עליונה
+    # 3. כותרת עליונה (מיוצרת רק במידה ואין תמונת בלאנק מובנית)
     date_str = datetime.now().strftime('%d/%m/%Y')
-    draw_text(520, height - 50, 'בס"ד', font_size=11, align='right')
-    draw_text(width / 2, height - 50, 'ע.ר. 580107613', font_size=10, align='center')
-    draw_text(70, height - 50, f'תאריך: {date_str}', font_size=10, align='left')
+    if not has_letterhead:
+        draw_text(width - 50, height - 50, 'בס"ד', font_size=11, align='right')
+        draw_text(width / 2, height - 50, 'ע.ר. 580107613', font_size=10, align='center')
+        draw_text(50, height - 50, f'תאריך: {date_str}', font_size=10, align='left')
 
     # 4. כותרת האישור
-    draw_text(width / 2, height - 120, template.title or 'אישור תלמיד', font_size=22, align='center')
+    draw_text(width / 2, height - 130, template.title or 'אישור תלמיד', font_size=20, align='center')
 
-    # 5. תוכן האישור
+    # 5. גוף האישור
     y_pos = height - 180
     for line in content.split('\n'):
         line_clean = line.strip()
         if line_clean:
-            draw_text(520, y_pos, line_clean, font_size=14, align='right')
-            y_pos -= 28
+            draw_text(width - 60, y_pos, line_clean, font_size=13, align='right')
+            y_pos -= 26
 
-    # 6. חתימה וחותמת
-    y_footer = max(y_pos - 40, 160)
-    draw_text(520, y_footer, 'בברכה,', font_size=13, align='right')
-    draw_text(520, y_footer - 20, 'הנהלת המוסד', font_size=12, align='right')
+    # 6. חתימה וחותמת (ממוקמות עם רווח בטיחות למניעת חפיפת טקסט)
+    y_footer = max(y_pos - 40, 170)
+    draw_text(width - 60, y_footer, 'בברכה,', font_size=13, align='right')
+    draw_text(width - 60, y_footer - 22, 'הנהלת המוסד', font_size=12, align='right')
 
-    stamp_path = os.path.join(app.root_path, 'static', 'stamp.png')
-    if not os.path.exists(stamp_path):
-        stamp_path = os.path.join(app.root_path, 'static', 'signature.png')
-
-    if os.path.exists(stamp_path):
-        c.drawImage(stamp_path, 360, y_footer - 85, width=130, height=75, mask='auto')
+    stamp_paths = [
+        os.path.join(app.root_path, 'static', 'stamp.png'),
+        os.path.join(app.root_path, 'static', 'signature.png'),
+        os.path.join(app.root_path, 'static', 'uploads', 'stamp.png'),
+        os.path.join(app.root_path, 'static', 'uploads', 'signature.png')
+    ]
+    for sp in stamp_paths:
+        if os.path.exists(sp):
+            c.drawImage(sp, width - 200, y_footer - 90, width=130, height=65, mask='auto')
+            break
 
     c.showPage()
     c.save()
