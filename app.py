@@ -535,6 +535,48 @@ def generate_document():
         'content': content
     })
 
+# --- נתיב להדפסת אישור לתלמיד (פתרון שגיאת 404) ---
+
+@app.route('/api/students/<int:student_id>/print/<int:template_id>', methods=['GET'])
+@login_required
+def print_student_certificate(student_id, template_id):
+    student = db.session.get(Student, student_id)
+    template = db.session.get(Template, template_id)
+
+    if not student or not template:
+        return "תלמיד או תבנית לא נמצאו", 404
+
+    content = template.content or ''
+    content = content.replace('{first_name}', student.first_name or '')
+    content = content.replace('{last_name}', student.last_name or '')
+    content = content.replace('{tz}', student.tz or '')
+    content = content.replace('{city}', student.city or '')
+    content = content.replace('{address}', student.address or '')
+    content = content.replace('{phone}', student.phone or '')
+    content = content.replace('{cycle}', student.cycle or '')
+
+    return f"""
+    <!DOCTYPE html>
+    <html dir="rtl" lang="he">
+    <head>
+        <meta charset="UTF-8">
+        <title>{template.title}</title>
+    </head>
+    <body>
+        <div style="font-family: Arial, sans-serif; padding: 40px; line-height: 1.8; max-width: 800px; margin: auto;">
+            <h1 style="text-align: center; margin-bottom: 30px;">{template.title}</h1>
+            <div style="font-size: 18px;">{content}</div>
+            <div style="margin-top: 50px; text-align: left;">
+                <p>תאריך: {datetime.now().strftime('%d/%m/%Y')}</p>
+            </div>
+        </div>
+        <script>
+            window.onload = function() {{ window.print(); }}
+        </script>
+    </body>
+    </html>
+    """
+
 # --- ייצוא מלא לאקסל ---
 
 @app.route('/api/export', methods=['GET', 'POST'])
