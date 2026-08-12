@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import requests
 import threading
 from datetime import datetime
@@ -10,6 +11,12 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy import text, inspect
+
+# יבוא ReportLab להפקת קובצי PDF
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 try:
     import cloudinary
@@ -510,6 +517,18 @@ def get_template_replacements(student):
         '{תאריך}': datetime.now().strftime('%d/%m/%Y')
     }
 
+def fix_hebrew_text(text_str):
+    if not text_str:
+        return ""
+    words = text_str.split(' ')
+    fixed_words = []
+    for w in words:
+        if re.search(r'[\u0590-\u05FF]', w):
+            fixed_words.append(w[::-1])
+        else:
+            fixed_words.append(w)
+    return ' '.join(fixed_words[::-1])
+
 @app.route('/api/templates', methods=['GET'])
 @login_required
 def get_templates():
@@ -555,6 +574,8 @@ def generate_document():
         'content': content
     })
 
+# --- הנפקת אישור והורדת קובץ PDF ישירה ---
+
 @app.route('/api/students/<int:student_id>/print/<int:template_id>', methods=['GET'])
 @login_required
 def print_student_certificate(student_id, template_id):
@@ -568,90 +589,85 @@ def print_student_certificate(student_id, template_id):
     for key, val in get_template_replacements(student).items():
         content = content.replace(key, str(val))
 
-    return f"""
-    <!DOCTYPE html>
-    <html dir="rtl" lang="he">
-    <head>
-        <meta charset="UTF-8">
-        <title>{template.title}</title>
-        <style>
-            @page {{
-                size: A4;
-                margin: 0;
-            }}
-            @media print {{
-                body {{
-                    -webkit-print-color-adjust: exact !important;
-                    print-color-adjust: exact !important;
-                }}
-            }}
-            body {{
-                font-family: Arial, sans-serif;
-                margin: 0;
-                padding: 0;
-                width: 210mm;
-                height: 297mm;
-                background-image: url('/static/letterhead.png');
-                background-size: cover;
-                background-position: center;
-                background-repeat: no-repeat;
-                box-sizing: border-box;
-                position: relative;
-            }}
-            .cert-container {{
-                padding: 160px 80px 80px 80px;
-            }}
-            .cert-title {{
-                text-align: center;
-                margin-bottom: 40px;
-                font-size: 26px;
-                font-weight: bold;
-                text-decoration: underline;
-            }}
-            .cert-body {{
-                font-size: 18px;
-                line-height: 2;
-                white-space: pre-line;
-            }}
-            .cert-footer {{
-                margin-top: 60px;
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-end;
-            }}
-            .signature-box {{
-                text-align: center;
-            }}
-            .signature-img {{
-                max-width: 150px;
-                height: auto;
-                display: block;
-                margin-top: 10px;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="cert-container">
-            <div class="cert-title">{template.title}</div>
-            <div class="cert-body">{content}</div>
-            
-            <div class="cert-footer">
-                <div>
-                    <p><strong>תאריך הנפקה:</strong> {datetime.now().strftime('%d/%m/%Y')}</p>
-                </div>
-                <div class="signature-box">
-                    <p><strong>חתימה וחותמת:</strong></p>
-                    <img src="/static/signature.png" class="signature-img" alt="חותמת וחתימה" onerror="this.style.display='none';">
-                </div>
-            </div>
-        </div>
+    # יצירת קובץ PDF בזיכרון
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4  # 595.27 x 841.89 pt
 
-        <script>
-            window.onload = function() {{ window.print(); }}
-        </script>
-    </body>
-    </html>
-    """
+    # 1. הטמעת תמונת הרקע (בלאנק/נייר מכתבים)
+    letterhead_path = os.path.join(app.root_path, 'static', 'letterhead.png')
+    if os.path.exists(letterhead_path):
+        c.drawImage(letterhead_path, 0, 0, width=width, height=height)
+
+    # רישום גופן עברית במידה וקיים
+    font_name = 'Helvetica'
+    font_paths = [
+        os.path.join(app.root_path, 'static', 'Arial.ttf'),
+        'C:\\Windows\\Fonts\\arial.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/freefont/FreeSans.ttf'
+    ]
+    for fp in font_paths:
+        if os.path.exists(fp):
+            try:
+                pdfmetrics.registerFont(TTFont('HebrewFont', fp))
+                font_name = 'HebrewFont'
+                break
+            except Exception:
+                pass
+
+    def draw_line(x, y, text_str, font_size=12, align='right'):
+        c.setFont(font_name, font_size)
+        txt = fix_hebrew_text(text_str) if font_name != 'Helvetica' else fix_hebrew_text(text_str)
+        if align == 'center':
+            c.drawCentredString(x, y, txt)
+        elif align == 'left':
+            c.drawString(x, y, txt)
+        else:
+            c.drawRightString(x, y, txt)
+
+    # 2. כותרת עליונה
+    date_str = datetime.now().strftime('%d/%m/%Y')
+    draw_line(520, height - 50, 'בס"ד', font_size=11, align='right')
+    draw_line(width / 2, height - 50, 'ע.ר. 580107613', font_size=10, align='center')
+    draw_line(70, height - 50, f'תאריך: {date_str}', font_size=10, align='left')
+
+    # 3. כותרת האישור
+    draw_line(width / 2, height - 120, template.title or 'אישור תלמיד', font_size=22, align='center')
+
+    # 4. תוכן האישור
+    y_pos = height - 180
+    for line in content.split('\n'):
+        line_clean = line.strip()
+        if line_clean:
+            draw_line(520, y_pos, line_clean, font_size=14, align='right')
+            y_pos -= 28
+
+    # 5. חתימה וחותמת בתחתית
+    y_footer = max(y_pos - 40, 160)
+    draw_line(520, y_footer, 'בברכה,', font_size=13, align='right')
+    draw_line(520, y_footer - 20, 'הנהלת המוסד', font_size=12, align='right')
+
+    stamp_path = os.path.join(app.root_path, 'static', 'stamp.png')
+    if not os.path.exists(stamp_path):
+        stamp_path = os.path.join(app.root_path, 'static', 'signature.png')
+
+    if os.path.exists(stamp_path):
+        c.drawImage(stamp_path, 380, y_footer - 85, width=120, height=70, mask='auto')
+
+    c.showPage()
+    c.save()
+
+    buffer.seek(0)
+    filename = f"certificate_{student.tz or student_id}.pdf"
+    
+    # החזרת הקובץ להורדה ישירה
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=filename
+    )
 
 # --- ייצוא מלא לאקסל ---
 
