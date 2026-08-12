@@ -12,11 +12,17 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy import text, inspect
 
-# יבוא ReportLab להפקת קובצי PDF
+# יבוא ReportLab ו-BiDi לטיפול מושלם בעברית ומספרים
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+
+try:
+    from bidi.algorithm import get_display
+    HAS_BIDI = True
+except ImportError:
+    HAS_BIDI = False
 
 try:
     import cloudinary
@@ -517,17 +523,19 @@ def get_template_replacements(student):
         '{תאריך}': datetime.now().strftime('%d/%m/%Y')
     }
 
-def fix_hebrew_text(text_str):
+def format_bidi(text_str):
     if not text_str:
         return ""
-    words = text_str.split(' ')
-    fixed_words = []
+    if HAS_BIDI:
+        return get_display(str(text_str))
+    words = str(text_str).split(' ')
+    fixed = []
     for w in words:
         if re.search(r'[\u0590-\u05FF]', w):
-            fixed_words.append(w[::-1])
+            fixed.append(w[::-1])
         else:
-            fixed_words.append(w)
-    return ' '.join(fixed_words[::-1])
+            fixed.append(w)
+    return ' '.join(fixed[::-1])
 
 @app.route('/api/templates', methods=['GET'])
 @login_required
@@ -574,7 +582,7 @@ def generate_document():
         'content': content
     })
 
-# --- הנפקת אישור והורדת קובץ PDF ישירה ---
+# --- הנפקת אישור והורדת קובץ PDF מותאם ומדויק ---
 
 @app.route('/api/students/<int:student_id>/print/<int:template_id>', methods=['GET'])
 @login_required
@@ -589,17 +597,16 @@ def print_student_certificate(student_id, template_id):
     for key, val in get_template_replacements(student).items():
         content = content.replace(key, str(val))
 
-    # יצירת קובץ PDF בזיכרון
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4  # 595.27 x 841.89 pt
 
-    # 1. הטמעת תמונת הרקע (בלאנק/נייר מכתבים)
+    # 1. הטמעת תמונת הרקע (בלאנק/נייר מכתבים) במידה וקיימת
     letterhead_path = os.path.join(app.root_path, 'static', 'letterhead.png')
     if os.path.exists(letterhead_path):
         c.drawImage(letterhead_path, 0, 0, width=width, height=height)
 
-    # רישום גופן עברית במידה וקיים
+    # 2. רישום גופן בעברית
     font_name = 'Helvetica'
     font_paths = [
         os.path.join(app.root_path, 'static', 'Arial.ttf'),
@@ -616,9 +623,9 @@ def print_student_certificate(student_id, template_id):
             except Exception:
                 pass
 
-    def draw_line(x, y, text_str, font_size=12, align='right'):
+    def draw_text(x, y, text_str, font_size=12, align='right'):
         c.setFont(font_name, font_size)
-        txt = fix_hebrew_text(text_str) if font_name != 'Helvetica' else fix_hebrew_text(text_str)
+        txt = format_bidi(text_str)
         if align == 'center':
             c.drawCentredString(x, y, txt)
         elif align == 'left':
@@ -626,42 +633,41 @@ def print_student_certificate(student_id, template_id):
         else:
             c.drawRightString(x, y, txt)
 
-    # 2. כותרת עליונה
+    # 3. כותרת עליונה
     date_str = datetime.now().strftime('%d/%m/%Y')
-    draw_line(520, height - 50, 'בס"ד', font_size=11, align='right')
-    draw_line(width / 2, height - 50, 'ע.ר. 580107613', font_size=10, align='center')
-    draw_line(70, height - 50, f'תאריך: {date_str}', font_size=10, align='left')
+    draw_text(520, height - 50, 'בס"ד', font_size=11, align='right')
+    draw_text(width / 2, height - 50, 'ע.ר. 580107613', font_size=10, align='center')
+    draw_text(70, height - 50, f'תאריך: {date_str}', font_size=10, align='left')
 
-    # 3. כותרת האישור
-    draw_line(width / 2, height - 120, template.title or 'אישור תלמיד', font_size=22, align='center')
+    # 4. כותרת האישור
+    draw_text(width / 2, height - 120, template.title or 'אישור תלמיד', font_size=22, align='center')
 
-    # 4. תוכן האישור
+    # 5. תוכן האישור
     y_pos = height - 180
     for line in content.split('\n'):
         line_clean = line.strip()
         if line_clean:
-            draw_line(520, y_pos, line_clean, font_size=14, align='right')
+            draw_text(520, y_pos, line_clean, font_size=14, align='right')
             y_pos -= 28
 
-    # 5. חתימה וחותמת בתחתית
+    # 6. חתימה וחותמת
     y_footer = max(y_pos - 40, 160)
-    draw_line(520, y_footer, 'בברכה,', font_size=13, align='right')
-    draw_line(520, y_footer - 20, 'הנהלת המוסד', font_size=12, align='right')
+    draw_text(520, y_footer, 'בברכה,', font_size=13, align='right')
+    draw_text(520, y_footer - 20, 'הנהלת המוסד', font_size=12, align='right')
 
     stamp_path = os.path.join(app.root_path, 'static', 'stamp.png')
     if not os.path.exists(stamp_path):
         stamp_path = os.path.join(app.root_path, 'static', 'signature.png')
 
     if os.path.exists(stamp_path):
-        c.drawImage(stamp_path, 380, y_footer - 85, width=120, height=70, mask='auto')
+        c.drawImage(stamp_path, 360, y_footer - 85, width=130, height=75, mask='auto')
 
     c.showPage()
     c.save()
 
     buffer.seek(0)
     filename = f"certificate_{student.tz or student_id}.pdf"
-    
-    # החזרת הקובץ להורדה ישירה
+
     return send_file(
         buffer,
         mimetype='application/pdf',

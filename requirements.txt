@@ -9,3 +9,4 @@ reportlab
 psycopg2-binary
 cloudinary
 requests
+python-bidi
