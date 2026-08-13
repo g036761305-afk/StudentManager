@@ -368,7 +368,7 @@ def save_student():
 
             if HAS_CLOUDINARY and os.environ.get('CLOUDINARY_URL'):
                 try:
-                    upload_res = cloudinary.uploader.upload(local_path, folder="student_avatars")
+                    upload_res = cloudinary.uploader.upload(local_path, folder="student_avatars", resource_type="auto")
                     student.avatar_path = upload_res.get('secure_url', student.avatar_path)
                 except Exception as ex:
                     print("Cloudinary avatar upload skipped/failed:", ex)
@@ -384,7 +384,7 @@ def save_student():
 
             if HAS_CLOUDINARY and os.environ.get('CLOUDINARY_URL'):
                 try:
-                    upload_res = cloudinary.uploader.upload(local_path, folder="student_id_photos")
+                    upload_res = cloudinary.uploader.upload(local_path, folder="student_id_photos", resource_type="auto")
                     student.id_photo_path = upload_res.get('secure_url', student.id_photo_path)
                 except Exception as ex:
                     print("Cloudinary ID photo upload skipped/failed:", ex)
