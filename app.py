@@ -428,6 +428,12 @@ def import_excel():
                 cycle = str(row.get('מחזור') or '').strip()
                 status = str(row.get('סטטוס') or '').strip()
 
+                # קריאת שדות תא קולי וקוד טלפוניה
+                voicemail = str(row.get('תא קולי') or row.get('voicemail') or '').strip()
+                telephony_code = str(row.get('קוד טלפוניה') or row.get('telephony_code') or '').strip()
+                if voicemail.endswith('.0'): voicemail = voicemail[:-2]
+                if telephony_code.endswith('.0'): telephony_code = telephony_code[:-2]
+
                 if not first_name and not last_name and not tz:
                     continue
 
@@ -458,6 +464,8 @@ def import_excel():
                 if phone: student.phone = phone
                 if cycle: student.cycle = cycle
                 if status: student.status = status
+                if voicemail: student.voicemail = voicemail
+                if telephony_code: student.telephony_code = telephony_code
 
                 student.updated_at = datetime.now().isoformat()
                 student.is_synced = 0
@@ -526,6 +534,12 @@ def get_template_replacements(student):
         '{טלפון}': student.phone or '',
         '{cycle}': student.cycle or '',
         '{מחזור}': student.cycle or '',
+        '{voicemail}': student.voicemail or '',
+        '{תא_קולי}': student.voicemail or '',
+        '{תא קולי}': student.voicemail or '',
+        '{telephony_code}': student.telephony_code or '',
+        '{קוד_טלפוניה}': student.telephony_code or '',
+        '{קוד טלפוניה}': student.telephony_code or '',
         '{תאריך}': datetime.now().strftime('%d/%m/%Y')
     }
 
@@ -607,7 +621,7 @@ def print_student_certificate(student_id, template_id):
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4  # 595.27 x 841.89 pt
 
-    # 1. חיפוש גמיש של תמונת נייר המכתבים (תמיכה באותיות גדולות/קטנות וסיומות שונות)
+    # 1. חיפוש גמיש של תמונת נייר המכתבים
     possible_letterhead_names = [
         'letterhead.png', 'letterhead.PNG', 'Letterhead.png', 'Letterhead.PNG',
         'letterhead.jpg', 'letterhead.JPG', 'letterhead.jpeg', 'Letterhead.jpeg'
@@ -628,7 +642,7 @@ def print_student_certificate(student_id, template_id):
         c.drawImage(letterhead_found_path, 0, 0, width=width, height=height)
         has_letterhead = True
 
-    # 2. טעינת גופן תואם עברית (כולל ניסיון לטעינת גופן מודגש)
+    # 2. טעינת גופן תואם עברית
     font_name = 'Helvetica'
     font_bold_name = 'Helvetica-Bold'
     font_paths = [
@@ -673,10 +687,10 @@ def print_student_certificate(student_id, template_id):
         else:
             c.drawRightString(x, y, txt)
 
-    # 3. מילת בס"ד בצד ימין למעלה (הונמך ל-height - 170)
+    # 3. מילת בס"ד בצד ימין למעלה
     draw_text(width - 60, height - 170, 'בס"ד', font_size=11, align='right')
 
-    # 4. תאריכים בצד שמאל למעלה (הונמך ל-height - 170 ולועזי + עברי)
+    # 4. תאריכים בצד שמאל למעלה (לועזי + עברי)
     date_str = datetime.now().strftime('%d/%m/%Y')
     hebrew_date_str = ''
     if HAS_PYLUACH:
@@ -690,14 +704,13 @@ def print_student_certificate(student_id, template_id):
     if hebrew_date_str:
         draw_text(110, height - 188, f'תאריך עברי: {hebrew_date_str}', font_size=11, align='left')
 
-    # אם אין בלאנק ברקע, נייצר כותרות ברירת מחדל
     if not has_letterhead:
         draw_text(width / 2, height - 50, 'ע.ר. 580107613', font_size=10, align='center')
 
-    # 5. כותרת האישור (מוגדלת ל-24pt, מודגשת והורדה ל-height - 260)
+    # 5. כותרת האישור
     draw_text(width / 2, height - 260, template.title or 'אישור תלמיד', font_size=24, align='center', is_bold=True)
 
-    # 6. גוף האישור (ממורכז במרכז הדף, פונט 15pt והורד ל-height - 320)
+    # 6. גוף האישור (ממורכז במרכז הדף)
     y_pos = height - 320
     for line in content.split('\n'):
         line_clean = line.strip()
@@ -802,7 +815,8 @@ def export_excel():
 def download_template():
     df = pd.DataFrame([{
         'שם פרטי': 'ישראל', 'שם משפחה': 'ישראלי', 'תעודת זהות': '123456789',
-        'עיר': 'ירושלים', 'טלפון': '0501234567', 'מחזור': 'א', 'סטטוס': 'רווק'
+        'עיר': 'ירושלים', 'טלפון': '0501234567', 'מחזור': 'א', 'סטטוס': 'רווק',
+        'תא קולי': '123', 'קוד טלפוניה': '456'
     }])
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
