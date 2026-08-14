@@ -1071,7 +1071,8 @@
         if (s.id_photo_path || s.id_photo_exists === 1) {
             statusBadge.innerText = "הועלה בהצלחה V"; statusBadge.className = "input-group-text bg-success text-white";
             document.getElementById('view_file_link_container').classList.remove('d-none');
-            document.getElementById('view_file_link').href = s.id_photo_path;
+            // קישור מעקף נטפרי דרך שרת המערכת:
+            document.getElementById('view_file_link').href = `/api/students/${s.id}/id-photo`;
             if (deleteIdPhotoBtn) deleteIdPhotoBtn.classList.remove('d-none');
         } else {
             statusBadge.innerText = "לא הועלה קובץ"; statusBadge.className = "input-group-text";

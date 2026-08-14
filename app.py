@@ -223,7 +223,7 @@ def push_unsynced_to_cloud():
 def trigger_background_sync():
     threading.Thread(target=push_unsynced_to_cloud, daemon=True).start()
 
-# --- נתיבים להגשת תמונות ---
+# --- נתיבים להגשת תמונות ומסמכים ---
 
 @app.route('/uploads/avatars/<path:filename>')
 def serve_avatar(filename):
@@ -247,6 +247,33 @@ def serve_uploads(filename):
         if os.path.exists(os.path.join(directory, filename)):
             return send_from_directory(directory, filename)
     return send_from_directory(os.path.join(app.root_path, 'static', 'uploads'), filename)
+
+# --- נתיב מעקף-נטפרי לצפייה בצילום תעודת זהות / דרכון ---
+
+@app.route('/api/students/<int:student_id>/id-photo')
+@login_required
+def view_student_id_photo(student_id):
+    student = db.session.get(Student, student_id)
+    if not student or not student.id_photo_path:
+        return "קובץ לא נמצא", 404
+
+    # אם הקובץ שמור בענן (Cloudinary), השרת מוריד אותו ברקע ומגיש למשתמש
+    if student.id_photo_path.startswith('http'):
+        try:
+            res = requests.get(student.id_photo_path, timeout=15)
+            if res.status_code == 200:
+                content_type = res.headers.get('Content-Type', 'application/pdf')
+                return send_file(
+                    io.BytesIO(res.content),
+                    mimetype=content_type,
+                    as_attachment=False
+                )
+        except Exception as e:
+            print("Proxy fetch error:", e)
+
+    # אם הקובץ שמור מקומית בשרת
+    filename = os.path.basename(student.id_photo_path)
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # --- נתיבי המערכת ---
 
@@ -428,7 +455,6 @@ def import_excel():
                 cycle = str(row.get('מחזור') or '').strip()
                 status = str(row.get('סטטוס') or '').strip()
 
-                # קריאת שדות תא קולי וקוד טלפוניה
                 voicemail = str(row.get('תא קולי') or row.get('voicemail') or '').strip()
                 telephony_code = str(row.get('קוד טלפוניה') or row.get('telephony_code') or '').strip()
                 if voicemail.endswith('.0'): voicemail = voicemail[:-2]
@@ -621,7 +647,6 @@ def print_student_certificate(student_id, template_id):
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4  # 595.27 x 841.89 pt
 
-    # 1. חיפוש גמיש של תמונת נייר המכתבים
     possible_letterhead_names = [
         'letterhead.png', 'letterhead.PNG', 'Letterhead.png', 'Letterhead.PNG',
         'letterhead.jpg', 'letterhead.JPG', 'letterhead.jpeg', 'Letterhead.jpeg'
@@ -642,7 +667,6 @@ def print_student_certificate(student_id, template_id):
         c.drawImage(letterhead_found_path, 0, 0, width=width, height=height)
         has_letterhead = True
 
-    # 2. טעינת גופן תואם עברית
     font_name = 'Helvetica'
     font_bold_name = 'Helvetica-Bold'
     font_paths = [
@@ -687,10 +711,8 @@ def print_student_certificate(student_id, template_id):
         else:
             c.drawRightString(x, y, txt)
 
-    # 3. מילת בס"ד בצד ימין למעלה
     draw_text(width - 60, height - 170, 'בס"ד', font_size=11, align='right')
 
-    # 4. תאריכים בצד שמאל למעלה (לועזי + עברי)
     date_str = datetime.now().strftime('%d/%m/%Y')
     hebrew_date_str = ''
     if HAS_PYLUACH:
@@ -707,10 +729,8 @@ def print_student_certificate(student_id, template_id):
     if not has_letterhead:
         draw_text(width / 2, height - 50, 'ע.ר. 580107613', font_size=10, align='center')
 
-    # 5. כותרת האישור
     draw_text(width / 2, height - 260, template.title or 'אישור תלמיד', font_size=24, align='center', is_bold=True)
 
-    # 6. גוף האישור (ממורכז במרכז הדף)
     y_pos = height - 320
     for line in content.split('\n'):
         line_clean = line.strip()
@@ -718,7 +738,6 @@ def print_student_certificate(student_id, template_id):
             draw_text(width / 2, y_pos, line_clean, font_size=15, align='center')
             y_pos -= 32
 
-    # 7. חתימה וחותמת בצד שמאל בתחתית
     y_footer = max(y_pos - 40, 200)
     draw_text(180, y_footer, 'בברכה,', font_size=14, align='center')
     draw_text(180, y_footer - 22, 'גרשון אלינסון 056586829', font_size=13, align='center')
