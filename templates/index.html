@@ -29,7 +29,6 @@
             user-select: none;
         }
 
-        /* עיצוב כותרות ומיון */
         .sortable-header {
             cursor: pointer;
             white-space: nowrap;
@@ -44,7 +43,6 @@
             color: #94a3b8;
         }
 
-        /* עיצוב שורת הסינון לכל עמודה בטבלה (Excel / Access Style) */
         .column-filter-row th {
             padding: 4px 6px !important;
             background-color: #f1f5f9 !important;
@@ -353,6 +351,8 @@
                     <input type="hidden" id="student_id" name="id">
                     <input type="hidden" id="id_photo_path_val" name="id_photo_path">
                     <input type="hidden" id="avatar_path_val" name="avatar_path">
+                    <input type="hidden" id="remove_avatar" name="remove_avatar" value="0">
+                    <input type="hidden" id="remove_id_photo" name="remove_id_photo" value="0">
 
                     <div class="d-flex align-items-center mb-4 p-3 bg-light rounded" style="position: relative;">
                         <div class="me-3 text-center">
@@ -778,12 +778,15 @@
             reader.onload = function(e) {
                 if (type === 'avatar') {
                     document.getElementById('avatar_preview_img').src = e.target.result;
+                    document.getElementById('remove_avatar').value = '0';
+                    document.getElementById('avatar_actions_container').classList.remove('d-none');
                 } else if (type === 'id_photo') {
                     const badge = document.getElementById('id_photo_status_badge');
                     if (badge) {
                         badge.innerText = "נבחר קובץ V";
                         badge.className = "input-group-text bg-warning text-dark";
                     }
+                    document.getElementById('remove_id_photo').value = '0';
                 }
             };
             reader.readAsDataURL(input.files[0]);
@@ -792,6 +795,7 @@
 
     function removeCurrentAvatar() {
         document.getElementById('avatar_path_val').value = '';
+        document.getElementById('remove_avatar').value = '1';
         document.getElementById('avatar_preview_img').src = "https://via.placeholder.com/100?text=אין+תמונה";
         document.getElementById('avatar_actions_container').classList.add('d-none');
         document.getElementById('avatar').value = '';
@@ -799,6 +803,7 @@
 
     function removeCurrentIdPhoto() {
         document.getElementById('id_photo_path_val').value = '';
+        document.getElementById('remove_id_photo').value = '1';
         const badge = document.getElementById('id_photo_status_badge');
         if (badge) {
             badge.innerText = "לא הועלה קובץ";
@@ -963,7 +968,7 @@
         tbody.innerHTML = '';
 
         students.forEach(s => {
-            const avatarImg = s.avatar_path ? s.avatar_path : 'https://via.placeholder.com/40?text=ת';
+            const avatarImg = s.avatar_path ? (s.avatar_path.startsWith('http') ? `/api/students/${s.id}/avatar` : s.avatar_path) : 'https://via.placeholder.com/40?text=ת';
             const idBadge = s.is_passport === 1 ? `<span class="badge bg-warning text-dark">דרכון: ${s.tz}</span>` : `<span>${s.tz || ''}</span>`;
             const docBadge = (s.id_photo_exists === 1 || s.id_photo_path) ? '<span class="badge bg-success">קיים V</span>' : '<span class="badge bg-secondary">לא הועלה</span>';
             
@@ -1013,6 +1018,8 @@
         document.getElementById('studentForm').reset();
         document.getElementById('student_id').value = '';
         document.getElementById('id_photo_path_val').value = '';
+        document.getElementById('remove_avatar').value = '0';
+        document.getElementById('remove_id_photo').value = '0';
         document.getElementById('avatar_preview_img').src = "https://via.placeholder.com/100?text=אין+תמונה";
         document.getElementById('view_file_link_container').classList.add('d-none');
         document.getElementById('delete_id_photo_btn').classList.add('d-none');
@@ -1056,11 +1063,14 @@
         document.getElementById('strengthening').value = s.strengthening || '';
         document.getElementById('is_jerusalem_branch').value = s.is_jerusalem_branch || "0";
         document.getElementById('id_photo_path_val').value = s.id_photo_path || '';
+        document.getElementById('remove_avatar').value = '0';
+        document.getElementById('remove_id_photo').value = '0';
         
         if (s.avatar_path) {
-            document.getElementById('avatar_preview_img').src = s.avatar_path;
+            const avatarSrc = s.avatar_path.startsWith('http') ? `/api/students/${s.id}/avatar` : s.avatar_path;
+            document.getElementById('avatar_preview_img').src = avatarSrc;
             document.getElementById('avatar_actions_container').classList.remove('d-none');
-            document.getElementById('download_avatar_btn').href = s.avatar_path;
+            document.getElementById('download_avatar_btn').href = avatarSrc;
         } else {
             document.getElementById('avatar_preview_img').src = "https://via.placeholder.com/100?text=אין+תמונה";
             document.getElementById('avatar_actions_container').classList.add('d-none');
@@ -1071,7 +1081,6 @@
         if (s.id_photo_path || s.id_photo_exists === 1) {
             statusBadge.innerText = "הועלה בהצלחה V"; statusBadge.className = "input-group-text bg-success text-white";
             document.getElementById('view_file_link_container').classList.remove('d-none');
-            // קישור מעקף נטפרי דרך שרת המערכת:
             document.getElementById('view_file_link').href = `/api/students/${s.id}/id-photo`;
             if (deleteIdPhotoBtn) deleteIdPhotoBtn.classList.remove('d-none');
         } else {

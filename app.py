@@ -248,7 +248,7 @@ def serve_uploads(filename):
             return send_from_directory(directory, filename)
     return send_from_directory(os.path.join(app.root_path, 'static', 'uploads'), filename)
 
-# --- נתיב מעקף-נטפרי לצפייה בצילום תעודת זהות / דרכון ---
+# --- נתיבי Proxy מעקף-נטפרי לקבצים בענן ---
 
 @app.route('/api/students/<int:student_id>/id-photo')
 @login_required
@@ -257,7 +257,6 @@ def view_student_id_photo(student_id):
     if not student or not student.id_photo_path:
         return "קובץ לא נמצא", 404
 
-    # אם הקובץ שמור בענן (Cloudinary), השרת מוריד אותו ברקע ומגיש למשתמש
     if student.id_photo_path.startswith('http'):
         try:
             res = requests.get(student.id_photo_path, timeout=15)
@@ -269,10 +268,32 @@ def view_student_id_photo(student_id):
                     as_attachment=False
                 )
         except Exception as e:
-            print("Proxy fetch error:", e)
+            print("Proxy fetch ID photo error:", e)
 
-    # אם הקובץ שמור מקומית בשרת
     filename = os.path.basename(student.id_photo_path)
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/api/students/<int:student_id>/avatar')
+@login_required
+def view_student_avatar(student_id):
+    student = db.session.get(Student, student_id)
+    if not student or not student.avatar_path:
+        return "תמונה לא נמצאה", 404
+
+    if student.avatar_path.startswith('http'):
+        try:
+            res = requests.get(student.avatar_path, timeout=15)
+            if res.status_code == 200:
+                content_type = res.headers.get('Content-Type', 'image/jpeg')
+                return send_file(
+                    io.BytesIO(res.content),
+                    mimetype=content_type,
+                    as_attachment=False
+                )
+        except Exception as e:
+            print("Proxy fetch avatar error:", e)
+
+    filename = os.path.basename(student.avatar_path)
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # --- נתיבי המערכת ---
@@ -385,7 +406,10 @@ def save_student():
     student.updated_at = datetime.now().isoformat()
     student.is_synced = 0
 
-    if 'avatar' in request.files:
+    # טיפול בהסרת תמונת פרופיל או העלאת חדשה
+    if request.form.get('remove_avatar') == '1':
+        student.avatar_path = None
+    elif 'avatar' in request.files:
         avatar = request.files['avatar']
         if avatar and avatar.filename != '':
             fname = secure_filename(avatar.filename)
@@ -400,7 +424,11 @@ def save_student():
                 except Exception as ex:
                     print("Cloudinary avatar upload skipped/failed:", ex)
 
-    if 'id_photo' in request.files:
+    # טיפול בהסרת צילום ת"ז או העלאת חדש
+    if request.form.get('remove_id_photo') == '1':
+        student.id_photo_path = None
+        student.id_photo_exists = 0
+    elif 'id_photo' in request.files:
         id_photo = request.files['id_photo']
         if id_photo and id_photo.filename != '':
             fname = secure_filename(id_photo.filename)
@@ -645,7 +673,7 @@ def print_student_certificate(student_id, template_id):
 
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4  # 595.27 x 841.89 pt
+    width, height = A4
 
     possible_letterhead_names = [
         'letterhead.png', 'letterhead.PNG', 'Letterhead.png', 'Letterhead.PNG',
