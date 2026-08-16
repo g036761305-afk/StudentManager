@@ -252,7 +252,7 @@
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-mother_name"> שם האם</label></div>
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-birth_gregorian"> ת. לידה לועזי</label></div>
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-birth_hebrew"> ת. לידה עברי</label></div>
-            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-entry_date"> ת. כניסה</label></div>
+            <div class="col-6 col-entry_date col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-entry_date"> ת. כניסה</label></div>
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-leave_date"> ת. עזיבה</label></div>
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-wedding_date"> ת. חתונה</label></div>
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-voicemail"> תא קולי</label></div>
@@ -581,6 +581,7 @@
                 }
             });
 
+            // ניווט במקלדת
             document.addEventListener('keydown', (e) => {
                 const modalEl = document.getElementById('studentModal');
                 if (modalEl && modalEl.classList.contains('show')) {
@@ -589,6 +590,9 @@
                     else if (e.key === 'ArrowLeft') navigateStudent(1);
                 }
             });
+
+            // האזנה להדבקה ישירה מלוח הגזירים (Ctrl+V)
+            document.addEventListener('paste', handleGlobalPaste);
 
             loadStudents();
             loadDocTemplates();
@@ -772,8 +776,49 @@
         });
     }
 
-    function handleFileChange(input, type) {
+    // הדבקה ישירה מלוח הגזירים
+    function handleGlobalPaste(e) {
+        const modalEl = document.getElementById('studentModal');
+        if (!modalEl || !modalEl.classList.contains('show')) return;
+        
+        // אם המשתמש נמצא בתוך שדה טקסט רגיל, נותנים לו להדביק טקסט
+        const targetTag = e.target.tagName;
+        if (['INPUT', 'TEXTAREA'].includes(targetTag) && e.target.type !== 'file') {
+            return;
+        }
+
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let item of items) {
+            if (item.type.indexOf('image') !== -1 || item.type.indexOf('pdf') !== -1) {
+                const file = item.getAsFile();
+                if (!file) continue;
+
+                // בדיקה איזו לשונית פעילה כעת
+                const activeTab = document.querySelector('#studentTabs .nav-link.active');
+                const isTechTab = activeTab && activeTab.getAttribute('id') === 'tech-tab';
+
+                if (isTechTab) {
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    const fileInput = document.getElementById('id_photo');
+                    fileInput.files = dt.files;
+                    handleFileChange(fileInput, 'id_photo', true);
+                } else {
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    const fileInput = document.getElementById('avatar');
+                    fileInput.files = dt.files;
+                    handleFileChange(fileInput, 'avatar', true);
+                }
+                e.preventDefault();
+                break;
+            }
+        }
+    }
+
+    function handleFileChange(input, type, autoSave = true) {
         if (input.files && input.files[0]) {
+            const file = input.files[0];
             const reader = new FileReader();
             reader.onload = function(e) {
                 if (type === 'avatar') {
@@ -788,8 +833,13 @@
                     }
                     document.getElementById('remove_id_photo').value = '0';
                 }
+
+                // שמירה אוטומטית שקטה ברקע
+                if (autoSave && currentlyOpenStudentId) {
+                    saveStudentSilently();
+                }
             };
-            reader.readAsDataURL(input.files[0]);
+            reader.readAsDataURL(file);
         }
     }
 
@@ -799,6 +849,7 @@
         document.getElementById('avatar_preview_img').src = "https://via.placeholder.com/100?text=אין+תמונה";
         document.getElementById('avatar_actions_container').classList.add('d-none');
         document.getElementById('avatar').value = '';
+        if (currentlyOpenStudentId) saveStudentSilently();
     }
 
     function removeCurrentIdPhoto() {
@@ -812,6 +863,7 @@
         document.getElementById('view_file_link_container').classList.add('d-none');
         document.getElementById('delete_id_photo_btn').classList.add('d-none');
         document.getElementById('id_photo').value = '';
+        if (currentlyOpenStudentId) saveStudentSilently();
     }
 
     function navigateStudent(direction) {
@@ -1098,6 +1150,25 @@
         document.getElementById('header_student_name').innerText = `${s.first_name} ${s.last_name}`;
         document.getElementById('header_student_tz').innerText = `זיהוי: ${s.tz}`;
         studentModal.show();
+    }
+
+    // שמירה שקטה ברקע להעלאת קבצים
+    async function saveStudentSilently() {
+        const formEl = document.getElementById('studentForm');
+        const formData = new FormData(formEl);
+        try {
+            const res = await fetch('/api/students/save', {
+                method: 'POST',
+                body: formData
+            });
+            if (res.ok) {
+                const responseData = await fetch('/api/students');
+                allStudents = await responseData.json();
+                filterStudents();
+            }
+        } catch (e) {
+            console.error("שגיאה בשמירה שקטה:", e);
+        }
     }
 
     async function saveStudent() {
