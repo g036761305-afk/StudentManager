@@ -252,7 +252,7 @@
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-mother_name"> שם האם</label></div>
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-birth_gregorian"> ת. לידה לועזי</label></div>
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-birth_hebrew"> ת. לידה עברי</label></div>
-            <div class="col-6 col-entry_date col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-entry_date"> ת. כניסה</label></div>
+            <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-entry_date"> ת. כניסה</label></div>
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-leave_date"> ת. עזיבה</label></div>
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-wedding_date"> ת. חתונה</label></div>
             <div class="col-6 col-md-2"><label class="form-check-label"><input type="checkbox" class="form-check-input col-toggle" value="col-voicemail"> תא קולי</label></div>
@@ -594,6 +594,44 @@
             // האזנה להדבקה ישירה מלוח הגזירים (Ctrl+V)
             document.addEventListener('paste', handleGlobalPaste);
 
+            // תמיכה בגרירת קבצים (Drag & Drop גם עם מקש Ctrl)
+            const modalBody = document.querySelector('#studentModal .modal-body');
+            if (modalBody) {
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    modalBody.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }, false);
+                });
+
+                modalBody.addEventListener('drop', (e) => {
+                    const dt = e.dataTransfer;
+                    const files = dt.files;
+                    if (!files || files.length === 0) return;
+
+                    const file = files[0];
+                    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                    const isImage = file.type.startsWith('image/');
+
+                    const activeTab = document.querySelector('#studentTabs .nav-link.active');
+                    const isTechTab = activeTab && activeTab.getAttribute('id') === 'tech-tab';
+
+                    if (isPdf || isTechTab) {
+                        const fileInput = document.getElementById('id_photo');
+                        const dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(file);
+                        fileInput.files = dataTransfer.files;
+                        handleFileChange(fileInput, 'id_photo', true);
+                    } else if (isImage) {
+                        const fileInput = document.getElementById('avatar');
+                        const dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(file);
+                        fileInput.files = dataTransfer.files;
+                        handleFileChange(fileInput, 'avatar', true);
+                    }
+                });
+            }
+
             loadStudents();
             loadDocTemplates();
         } catch (err) {
@@ -776,12 +814,10 @@
         });
     }
 
-    // הדבקה ישירה מלוח הגזירים
     function handleGlobalPaste(e) {
         const modalEl = document.getElementById('studentModal');
         if (!modalEl || !modalEl.classList.contains('show')) return;
         
-        // אם המשתמש נמצא בתוך שדה טקסט רגיל, נותנים לו להדביק טקסט
         const targetTag = e.target.tagName;
         if (['INPUT', 'TEXTAREA'].includes(targetTag) && e.target.type !== 'file') {
             return;
@@ -793,7 +829,6 @@
                 const file = item.getAsFile();
                 if (!file) continue;
 
-                // בדיקה איזו לשונית פעילה כעת
                 const activeTab = document.querySelector('#studentTabs .nav-link.active');
                 const isTechTab = activeTab && activeTab.getAttribute('id') === 'tech-tab';
 
@@ -834,7 +869,6 @@
                     document.getElementById('remove_id_photo').value = '0';
                 }
 
-                // שמירה אוטומטית שקטה ברקע
                 if (autoSave && currentlyOpenStudentId) {
                     saveStudentSilently();
                 }
@@ -1152,7 +1186,6 @@
         studentModal.show();
     }
 
-    // שמירה שקטה ברקע להעלאת קבצים
     async function saveStudentSilently() {
         const formEl = document.getElementById('studentForm');
         const formData = new FormData(formEl);
